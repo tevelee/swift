@@ -4296,7 +4296,9 @@ private:
 
   /// An ordinary closure argument explicitly bound by the `self` keyword.
   /// This is neither a capture nor an instance method's implicit self.
-  ParamDecl *ReceiverParameter = nullptr;
+  /// Store its position so replacing a parameter list with a clone does not
+  /// leave the receiver referring to a declaration from the old list.
+  std::optional<unsigned> ReceiverParameterIndex;
 
   /// The location of the "async", if present.
   SourceLoc AsyncLoc;
@@ -4562,10 +4564,10 @@ public:
     return CapturedSelfDecl;
   }
 
-  ParamDecl *getReceiverParameter() const { return ReceiverParameter; }
+  ParamDecl *getReceiverParameter() const;
 
   /// Select an explicitly written receiver, diagnosing duplicate bindings.
-  void setReceiverParameter(ParamDecl *parameter);
+  void setReceiverParameter(unsigned index);
 
   /// Get the type checking state of this closure's body.
   BodyState getBodyState() const {

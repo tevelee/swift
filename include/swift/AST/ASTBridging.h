@@ -2010,7 +2010,7 @@ void BridgedClosureExpr_setParameterList(BridgedClosureExpr cClosure,
 
 SWIFT_NAME("BridgedClosureExpr.setReceiverParameter(self:at:)")
 void BridgedClosureExpr_setReceiverParameter(BridgedClosureExpr cClosure,
-                                             size_t index);
+                                            size_t index);
 
 SWIFT_NAME("getter:BridgedClosureExpr.hasAnonymousClosureVars(self:)")
 bool BridgedClosureExpr_hasAnonymousClosureVars(BridgedClosureExpr cClosure);

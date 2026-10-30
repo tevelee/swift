@@ -19,6 +19,10 @@ func inferredReceiver() {
   _ = result
   let values: [Int] = [Item(value: 1), Item(value: 2)].map { self in value }
   _ = values
+  let total: Int = [Item(value: 1), Item(value: 2)].reduce(0) {
+    total, self in total + value
+  }
+  _ = total
 }
 
 func localShadowing() {
@@ -64,3 +68,22 @@ func nestedCaptures(_ request: Request) {
 
 // An escaping receiver closure receives its argument on each invocation.
 let callback: (Request) -> Void = { self in finish() }
+
+class Base {
+  func ping() {}
+}
+
+class Derived: Base {
+  func lexicalTypeAndSuperclass() {
+    with(Item(value: 1)) { self in
+      // Self remains the enclosing declaration's type, not Item.
+      let _: Self.Type = Self.self
+      super.ping() // expected-error {{'super' cannot be used in the scope of a closure receiver parameter}}
+    }
+    with(Item(value: 1)) { self in
+      escaping { [self] in
+        super.ping() // expected-error {{'super' cannot be used in the scope of a closure receiver parameter}}
+      }
+    }
+  }
+}

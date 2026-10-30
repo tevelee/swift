@@ -50,3 +50,20 @@ func runCaptureTests() {
 
 runReceiverTests()
 runCaptureTests()
+
+struct OwnedToken: ~Copyable {
+  var value: Int
+  borrowing func inspect() -> Int { value }
+}
+
+func runOwnedCaptureTests() {
+  let makeInspector: (consuming OwnedToken) -> () -> Int = {
+    (self: consuming OwnedToken) in
+    { [owned = consume self] in owned.inspect() }
+  }
+  let inspect = makeInspector(OwnedToken(value: 7))
+  print(inspect(), inspect())
+  // CHECK-NEXT: 7 7
+}
+
+runOwnedCaptureTests()

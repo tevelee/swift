@@ -3133,12 +3133,13 @@ ParserResult<Expr> Parser::parseExprClosure() {
       attributes, bracketRange, capturedSelfDecl, params, asyncLoc, throwsLoc,
       thrownType, arrowLoc, inLoc, explicitResultType, CurDeclContext);
   if (params && Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters)) {
-    for (auto *parameter : *params) {
+    for (unsigned index = 0; index < params->size(); ++index) {
+      auto *parameter = params->get(index);
       if (parameter->getName() == Context.Id_self &&
           parameter->getLoc().isValid() &&
           Lexer::getTokenAtLocation(SourceMgr, parameter->getLoc())
               .is(tok::kw_self))
-        closure->setReceiverParameter(parameter);
+        closure->setReceiverParameter(index);
     }
   }
   ParseFunctionBody cc(*this, closure);

@@ -1377,6 +1377,11 @@ public:
     if (auto *superRef = dyn_cast<SuperRefExpr>(expr)) {
       auto loc = superRef->getLoc();
 
+      if (findClosureReceiver(DC)) {
+        diags.diagnose(loc, diag::super_in_closure_with_receiver);
+        return finish(false, new (Ctx) ErrorExpr(loc));
+      }
+
       auto *selfDecl = getImplicitSelfDeclForSuperContext(loc);
       if (selfDecl == nullptr)
         return finish(false, new (Ctx) ErrorExpr(loc));

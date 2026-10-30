@@ -2029,11 +2029,26 @@ void AbstractClosureExpr::setParameterList(ParameterList *P) {
     P->setDeclContextOfParamDecls(this);
 }
 
-void ClosureExpr::setReceiverParameter(ParamDecl *parameter) {
+ParamDecl *ClosureExpr::getReceiverParameter() const {
+  if (!ReceiverParameterIndex)
+    return nullptr;
+  auto *parameters = getParameters();
+  assert(parameters && *ReceiverParameterIndex < parameters->size() &&
+         "receiver position must remain valid when replacing parameters");
+  auto *parameter = parameters->getArray()[*ReceiverParameterIndex];
+  assert(parameter->getName() == getASTContext().Id_self &&
+         "receiver parameter must be named self");
+  return parameter;
+}
+
+void ClosureExpr::setReceiverParameter(unsigned index) {
   auto &ctx = getASTContext();
   if (!ctx.LangOpts.hasFeature(Feature::ClosureReceiverParameters))
     return;
-  if (ReceiverParameter) {
+  assert(getParameters() && index < getParameters()->size());
+  auto *parameter = getParameters()->get(index);
+  assert(parameter->getName() == ctx.Id_self);
+  if (ReceiverParameterIndex) {
     ctx.Diags.diagnose(parameter->getLoc(),
                        diag::duplicate_closure_receiver_parameter);
     return;
@@ -2043,7 +2058,7 @@ void ClosureExpr::setReceiverParameter(ParamDecl *parameter) {
                        diag::closure_receiver_capture_conflict);
     return;
   }
-  ReceiverParameter = parameter;
+  ReceiverParameterIndex = index;
 }
 
 BraceStmt * AbstractClosureExpr::getBody() const {

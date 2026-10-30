@@ -4296,6 +4296,8 @@ public:
 
   void visitClosureExpr(ClosureExpr *E, Label label) {
     printClosure(E, "closure_expr", label);
+    printFlag(E->getReceiverParameter(), "receiver_parameter",
+              ClosureModifierColor);
     printFlag(E->hasSingleExpressionBody(), "single_expression",
               ClosureModifierColor);
     printFlag(E->allowsImplicitSelfCapture(), "implicit_self",

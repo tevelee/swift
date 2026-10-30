@@ -2,6 +2,7 @@ add_swift_unittest(SwiftASTTests
   ArithmeticEvaluator.cpp
   ASTDumperTests.cpp
   ASTWalkerTests.cpp
+  ClosureReceiverParameterTests.cpp
   AvailabilityContextTests.cpp
   AvailabilityDomainTests.cpp
   IndexSubsetTests.cpp

@@ -5080,6 +5080,8 @@ ERROR(super_in_nonclass_type,none,
 ERROR(super_in_closure_with_capture,none,
       "using 'super' in a closure where 'self' is explicitly captured is "
       "not yet supported", ())
+ERROR(super_in_closure_with_receiver,none,
+      "'super' cannot be used in the scope of a closure receiver parameter", ())
 NOTE(super_in_closure_with_capture_here,none,
      "'self' explicitly captured here", ())
 

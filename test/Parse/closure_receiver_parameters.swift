@@ -1,4 +1,5 @@
 // RUN: %target-swift-frontend -parse -verify -enable-experimental-feature ClosureReceiverParameters %s
+// RUN: %if swift_feature_ParserASTGen %{ %target-swift-frontend -parse -verify -enable-experimental-feature ClosureReceiverParameters -enable-experimental-feature ParserASTGen %s %}
 // REQUIRES: swift_feature_ClosureReceiverParameters
 
 let shorthand = { self in self.value }
