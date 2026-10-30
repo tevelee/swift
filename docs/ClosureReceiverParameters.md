@@ -23,7 +23,7 @@ the experimental parser feature used by ASTGen.
 
 ## Validation and limits
 
-The full SwiftParser suite has passed 2,759 tests, with 3 skipped and no failures,
+The local macOS SwiftParser suite passed: 2,759 tests, 3 skipped, 0 failures,
 including 22 receiver tests, with raw-syntax validation enabled. Its schema passed
 16 CodeGeneration tests. **The modified compiler has not been built or executed.**
 Compiler regression files are specifications awaiting execution, not proof of
