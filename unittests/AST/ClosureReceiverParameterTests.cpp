@@ -30,8 +30,8 @@ ClosureExpr *makeClosure(ASTContext &ctx) {
 
 ParamDecl *makeParameter(ClosureExpr *closure, Identifier name) {
   auto &ctx = closure->getASTContext();
-  auto *parameter = new (ctx) ParamDecl(
-      SourceLoc(), SourceLoc(), Identifier(), SourceLoc(), name, closure);
+  auto *parameter = new (ctx) ParamDecl(SourceLoc(), SourceLoc(), Identifier(),
+                                        SourceLoc(), name, closure);
   parameter->setSpecifier(ParamSpecifier::Default);
   parameter->setInterfaceType(ctx.TheEmptyTupleType);
   return parameter;

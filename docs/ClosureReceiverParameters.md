@@ -73,3 +73,27 @@ baseline passed diagnostic verification on Apple Swift 6.4.2: a consuming
 argument can move into captured storage, while borrowed escaping capture,
 consuming repeatable captured state, and escaping `inout` access are rejected.
 This validates existing ownership behavior, not this branch's compiler changes.
+
+## Next semantic iteration
+
+Receiver-before-global lookup needs a deferred name lookup in the constraint
+solver, rather than an unconditional rewrite in precheck:
+
+1. Preserve lexical local bindings, including parameters, captures, local types,
+   and forward references to local functions.
+2. Retain the nearest receiver binding and ordinary nonmember candidates without
+   selecting a global declaration before the receiver type is inferred.
+3. For each receiver-type alternative, perform ordinary member lookup on that
+   base. If the member name exists, keep its overload set and diagnose access or
+   type errors there. A global function that happens to type-check must not
+   bypass a shadowing receiver member.
+4. Use nonmember fallback only when the receiver has no such member. Do not
+   restore the enclosing instance as an implicit receiver.
+
+That decision must remain local to the solver branch exploring a receiver type.
+Tests should include an overloaded enclosing call, a same-named global with a
+more convenient result type, inaccessible receiver members, and generic and
+dynamic-member lookup. An unconditional precheck rewrite would break calls such
+as `print(value)` when the receiver has no `print` member. A ranked disjunction
+alone would incorrectly accept a global overload when a receiver member exists
+but has an incompatible signature.
