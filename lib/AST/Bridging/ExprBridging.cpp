@@ -168,6 +168,12 @@ void BridgedClosureExpr_setParameterList(BridgedClosureExpr cClosure,
   cClosure.unbridged()->setParameterList(cParams.unbridged());
 }
 
+void BridgedClosureExpr_setReceiverParameter(BridgedClosureExpr cClosure,
+                                             size_t index) {
+  auto *closure = cClosure.unbridged();
+  closure->setReceiverParameter(closure->getParameters()->get(index));
+}
+
 bool BridgedClosureExpr_hasAnonymousClosureVars(BridgedClosureExpr cClosure) {
   return cClosure.unbridged()->hasAnonymousClosureVars();
 }

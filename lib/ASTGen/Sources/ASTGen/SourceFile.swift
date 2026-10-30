@@ -85,6 +85,7 @@ extension Parser.LanguageFeatures {
     }
 
     mapFeature(.ReferenceBindings, to: .referenceBindings)
+    mapFeature(.ClosureReceiverParameters, to: .closureReceiverParameters)
     mapFeature(.ThenStatements, to: .thenStatements)
     mapFeature(.DoExpressions, to: .doExpressions)
     mapFeature(.NonescapableTypes, to: .nonescapableTypes)

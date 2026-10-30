@@ -9186,6 +9186,12 @@ bool VarDecl::isSelfParameter() const {
   return false;
 }
 
+bool VarDecl::isClosureReceiverParameter() const {
+  if (auto *closure = dyn_cast<ClosureExpr>(getDeclContext()))
+    return closure->getReceiverParameter() == this;
+  return false;
+}
+
 bool VarDecl::isActorSelf() const {
   if (!isSelfParameter() && !isSelfParamCapture())
     return false;

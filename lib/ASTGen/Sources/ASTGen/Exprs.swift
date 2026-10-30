@@ -390,6 +390,24 @@ extension ASTGenVisitor {
       expr.setHasAnonymousClosureVars()
     }
 
+    // The keyword token, rather than its normalized identifier text, opts in.
+    // An escaped `self` remains an ordinary parameter.
+    if let parameters = node.signature?.parameterClause {
+      switch parameters {
+      case .simpleInput(let parameters):
+        for (index, parameter) in parameters.enumerated()
+          where parameter.name.tokenKind == .keyword(.self) {
+          expr.setReceiverParameter(at: index)
+        }
+      case .parameterClause(let parameters):
+        for (index, parameter) in parameters.parameters.enumerated() {
+          if (parameter.secondName ?? parameter.firstName).tokenKind == .keyword(.self) {
+            expr.setReceiverParameter(at: index)
+          }
+        }
+      }
+    }
+
     let body = self.withDeclContext(expr.asDeclContext) {
       BridgedBraceStmt.createParsed(
         self.ctx,

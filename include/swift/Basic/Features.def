@@ -351,6 +351,7 @@ OPTIONAL_LANGUAGE_FEATURE(LibraryEvolution, 0, "Library evolution")
 //===----------------------------------------------------------------------===//
 
 EXPERIMENTAL_FEATURE(StaticAssert, false)
+EXPERIMENTAL_FEATURE(ClosureReceiverParameters, false)
 EXPERIMENTAL_FEATURE(NamedOpaqueTypes, false)
 EXPERIMENTAL_FEATURE(FlowSensitiveConcurrencyCaptures, false)
 EXPERIMENTAL_FEATURE(CodeItemMacros, false)

@@ -1894,7 +1894,7 @@ public:
   static bool
   isEnclosingSelfReference510(VarDecl *var,
                               const AbstractClosureExpr *inClosure) {
-    if (var->isSelfParameter())
+    if (var->isSelfParameter() || var->isClosureReceiverParameter())
       return true;
 
     // Capture variables have a DC of the parent function.
@@ -1908,6 +1908,10 @@ public:
   static bool
   selfDeclAllowsImplicitSelf510(DeclRefExpr *DRE, Type ty,
                                 const AbstractClosureExpr *inClosure) {
+    if (auto *closure = dyn_cast<ClosureExpr>(inClosure)) {
+      if (closure->getReceiverParameter() == DRE->getDecl())
+        return true;
+    }
     // If this is an explicit `weak self` capture, then implicit self is
     // allowed once the closure's self param is unwrapped. We need to validate
     // that the unwrapped `self` decl specifically refers to an unwrapped copy
@@ -1978,6 +1982,12 @@ public:
                                          const Type captureType,
                                          const AbstractClosureExpr *inClosure,
                                          bool isValidatingParentClosures) {
+    if (auto *closure = dyn_cast<ClosureExpr>(inClosure)) {
+      // A receiver is an invocation argument, even if this closure escapes.
+      // Nested closures must still satisfy their own capture requirements.
+      if (closure->getReceiverParameter() == selfDecl)
+        return true;
+    }
     ASTContext &ctx = inClosure->getASTContext();
 
     auto requiresSelfQualification =
@@ -2078,6 +2088,10 @@ public:
   parentClosureDisallowingImplicitSelf(const ValueDecl *selfDecl,
                                        const Type captureType,
                                        const AbstractClosureExpr *inClosure) {
+    if (auto *closure = dyn_cast<ClosureExpr>(inClosure)) {
+      if (closure->getReceiverParameter() == selfDecl)
+        return nullptr;
+    }
     // Find the outer decl that determines what self refers to in this
     // closure.
     //  - If this is an escaping closure that captured self, then `selfDecl`

@@ -2656,6 +2656,10 @@ ParserStatus Parser::parseClosureSignatureIfPresent(
     SourceLoc &asyncLoc, SourceLoc &throwsLoc, TypeExpr *&thrownType,
     SourceLoc &arrowLoc,
     TypeExpr *&explicitResultType, SourceLoc &inLoc) {
+  auto atReceiverParameter = [&] {
+    return Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+           Tok.is(tok::kw_self);
+  };
   // Clear out result parameters.
   bracketRange = SourceRange();
   attributes = DeclAttributes();
@@ -2686,7 +2690,7 @@ ParserStatus Parser::parseClosureSignatureIfPresent(
   // speculative parse to validate it and look for 'in'.
   if (Tok.isAny(
           tok::at_sign, tok::l_paren, tok::l_square, tok::identifier,
-          tok::kw__, tok::code_complete) ||
+          tok::kw__, tok::code_complete) || atReceiverParameter() ||
       (Tok.is(tok::kw_throws) && peekToken().is(tok::l_paren))) {
     BacktrackingScope backtrack(*this);
 
@@ -2732,11 +2736,13 @@ ParserStatus Parser::parseClosureSignatureIfPresent(
       }
 
       // Okay, we have a closure signature.
-    } else if (Tok.isIdentifierOrUnderscore() || Tok.is(tok::code_complete)) {
+    } else if (Tok.isIdentifierOrUnderscore() || Tok.is(tok::code_complete) ||
+               atReceiverParameter()) {
       // Parse identifier (',' identifier)*
       consumeToken();
       while (consumeIf(tok::comma)) {
-        if (Tok.isIdentifierOrUnderscore() || Tok.is(tok::code_complete)) {
+        if (Tok.isIdentifierOrUnderscore() || Tok.is(tok::code_complete) ||
+            atReceiverParameter()) {
           consumeToken();
           continue;
         }
@@ -2941,7 +2947,8 @@ ParserStatus Parser::parseClosureSignatureIfPresent(
       const auto parameterListLoc = Tok.getLoc();
       bool HasNext;
       do {
-        if (Tok.isNot(tok::identifier, tok::kw__, tok::code_complete)) {
+        if (Tok.isNot(tok::identifier, tok::kw__, tok::code_complete) &&
+            !atReceiverParameter()) {
           diagnose(Tok, diag::expected_closure_parameter_name);
           status.setIsParseError();
           break;
@@ -2951,6 +2958,9 @@ ParserStatus Parser::parseClosureSignatureIfPresent(
         SourceLoc nameLoc;
         if (Tok.is(tok::identifier)) {
           nameLoc = consumeIdentifier(name, /*diagnoseDollarPrefix=*/false);
+        } else if (atReceiverParameter()) {
+          name = Context.Id_self;
+          nameLoc = consumeToken();
         } else {
           assert(Tok.isAny(tok::kw__ , tok::code_complete));
           // Consume and ignore code_completion token so that completion don't
@@ -3122,6 +3132,15 @@ ParserResult<Expr> Parser::parseExprClosure() {
   auto *closure = new (Context) ClosureExpr(
       attributes, bracketRange, capturedSelfDecl, params, asyncLoc, throwsLoc,
       thrownType, arrowLoc, inLoc, explicitResultType, CurDeclContext);
+  if (params && Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters)) {
+    for (auto *parameter : *params) {
+      if (parameter->getName() == Context.Id_self &&
+          parameter->getLoc().isValid() &&
+          Lexer::getTokenAtLocation(SourceMgr, parameter->getLoc())
+              .is(tok::kw_self))
+        closure->setReceiverParameter(parameter);
+    }
+  }
   ParseFunctionBody cc(*this, closure);
 
   // Handle parameters.

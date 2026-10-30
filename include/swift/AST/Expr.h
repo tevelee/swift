@@ -4294,6 +4294,10 @@ private:
   /// this information directly on the ClosureExpr.
   VarDecl *CapturedSelfDecl;
 
+  /// An ordinary closure argument explicitly bound by the `self` keyword.
+  /// This is neither a capture nor an instance method's implicit self.
+  ParamDecl *ReceiverParameter = nullptr;
+
   /// The location of the "async", if present.
   SourceLoc AsyncLoc;
 
@@ -4557,6 +4561,11 @@ public:
   VarDecl *getCapturedSelfDecl() const {
     return CapturedSelfDecl;
   }
+
+  ParamDecl *getReceiverParameter() const { return ReceiverParameter; }
+
+  /// Select an explicitly written receiver, diagnosing duplicate bindings.
+  void setReceiverParameter(ParamDecl *parameter);
 
   /// Get the type checking state of this closure's body.
   BodyState getBodyState() const {

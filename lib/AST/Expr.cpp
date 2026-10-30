@@ -23,6 +23,7 @@
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTVisitor.h"
 #include "swift/AST/Decl.h" // FIXME: Bad dependency
+#include "swift/AST/DiagnosticsParse.h"
 #include "swift/AST/ExistentialLayout.h"
 #include "swift/AST/ParameterList.h"
 #include "swift/AST/Stmt.h"
@@ -2026,6 +2027,23 @@ void AbstractClosureExpr::setParameterList(ParameterList *P) {
   // Change the DeclContext of any parameters to be this closure.
   if (P)
     P->setDeclContextOfParamDecls(this);
+}
+
+void ClosureExpr::setReceiverParameter(ParamDecl *parameter) {
+  auto &ctx = getASTContext();
+  if (!ctx.LangOpts.hasFeature(Feature::ClosureReceiverParameters))
+    return;
+  if (ReceiverParameter) {
+    ctx.Diags.diagnose(parameter->getLoc(),
+                       diag::duplicate_closure_receiver_parameter);
+    return;
+  }
+  if (CapturedSelfDecl) {
+    ctx.Diags.diagnose(parameter->getLoc(),
+                       diag::closure_receiver_capture_conflict);
+    return;
+  }
+  ReceiverParameter = parameter;
 }
 
 BraceStmt * AbstractClosureExpr::getBody() const {

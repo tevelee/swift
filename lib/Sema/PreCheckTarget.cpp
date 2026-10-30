@@ -519,6 +519,20 @@ diagnoseUnqualifiedInit(UnresolvedDeclRefExpr *initExpr, DeclContext *dc,
                         initExpr->getNameLoc(), /*implicit=*/true);
 }
 
+static ParamDecl *findClosureReceiver(DeclContext *DC) {
+  for (auto *context = DC; context && context->isLocalContext();
+       context = context->getParent()) {
+    if (auto *closure = dyn_cast<ClosureExpr>(context)) {
+      if (auto *receiver = closure->getReceiverParameter())
+        return receiver;
+    } else if (isa<AbstractFunctionDecl>(context)) {
+      // A nested function is a new implicit receiver boundary for this POC.
+      break;
+    }
+  }
+  return nullptr;
+}
+
 /// Bind an UnresolvedDeclRefExpr by performing name lookup using the given
 /// options and returning the resultant expression. `DC` is the DeclContext
 /// used for the lookup. If the lookup doesn't find any results, returns
@@ -585,6 +599,39 @@ static Expr *resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE, DeclContext *DC,
       DC = DC->getModuleScopeContext();
 
     Lookup = TypeChecker::lookupUnqualified(DC, LookupName, Loc, lookupOptions);
+
+    // POC: retain ordinary lexical/global declarations, but redirect otherwise
+    // unresolved names and outer-instance members through the selected
+    // parameter. An UnresolvedDotExpr allows its base type to be inferred by
+    // the normal member constraint machinery. Receiver-vs-global priority is
+    // intentionally left for a subsequent constraint-solver implementation.
+    if (Loc.isValid() && !Name.isOperator() &&
+        Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters)) {
+      if (auto *receiver = findClosureReceiver(DC)) {
+        bool hasNonMember = false;
+        for (auto result : Lookup.innerResults()) {
+          if (!result.getDeclContext()) {
+            hasNonMember = true;
+            break;
+          }
+        }
+        if (!hasNonMember) {
+          SmallVector<ValueDecl *, 2> selfBindings;
+          ASTScope::lookupLocalDecls(
+              DC->getParentSourceFile(), DeclNameRef(Context.Id_self), Loc,
+              /*stopAfterInnermostBraceStmt=*/false, selfBindings);
+          // Resolve through the innermost binding, including explicit captures
+          // and weak-self unwrapping, rather than capturing the root parameter
+          // behind the programmer's back.
+          ValueDecl *base = selfBindings.empty() ? receiver : selfBindings[0];
+          auto *baseExpr = new (Context) DeclRefExpr(
+              base, UDRE->getNameLoc(), /*Implicit=*/true);
+          return new (Context) UnresolvedDotExpr(
+              baseExpr, SourceLoc(), Name, UDRE->getNameLoc(),
+              UDRE->isImplicit());
+        }
+      }
+    }
 
     ValueDecl *localDeclAfterUse = nullptr;
     AllDeclRefs = findNonMembers(

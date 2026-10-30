@@ -90,6 +90,10 @@ parseDefaultArgument(Parser &P, Parser::DefaultArgumentInfo *defaultArgs,
 /// Determine whether we are at the start of a parameter name when
 /// parsing a parameter.
 bool Parser::startsParameterName(bool isClosure) {
+  if (isClosure &&
+      Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+      Tok.is(tok::kw_self))
+    return true;
   // To have a parameter name here, we need a name.
   if (!Tok.canBeArgumentLabel())
     return false;
@@ -345,11 +349,24 @@ Parser::parseParameterClause(SourceLoc &leftParenLoc,
 
     if (startsParameterName(isClosure)) {
       // identifier-or-none for the first name
-      param.FirstNameLoc = consumeArgumentLabel(param.FirstName,
-                                                /*diagnoseDollarPrefix=*/!isClosure);
+      auto atReceiverParameter = [&] {
+        return isClosure &&
+               Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+               Tok.is(tok::kw_self);
+      };
+      if (atReceiverParameter()) {
+        param.FirstName = Context.Id_self;
+        param.FirstNameLoc = consumeToken();
+      } else {
+        param.FirstNameLoc = consumeArgumentLabel(
+            param.FirstName, /*diagnoseDollarPrefix=*/!isClosure);
+      }
 
       // identifier-or-none? for the second name
-      if (Tok.canBeArgumentLabel())
+      if (atReceiverParameter()) {
+        param.SecondName = Context.Id_self;
+        param.SecondNameLoc = consumeToken();
+      } else if (Tok.canBeArgumentLabel())
         param.SecondNameLoc = consumeArgumentLabel(param.SecondName,
                                                    /*diagnoseDollarPrefix=*/true);
 

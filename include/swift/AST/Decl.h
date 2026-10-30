@@ -7333,6 +7333,10 @@ public:
   /// Returns true if the name is the self identifier and is implicit.
   bool isSelfParameter() const;
 
+  /// Whether this is an ordinary closure argument explicitly bound as self.
+  /// Unlike isSelfParameter(), this does not imply method-self semantics.
+  bool isClosureReceiverParameter() const;
+
   /// Check whether the variable is the "self" of an actor method.
   bool isActorSelf() const;
 
