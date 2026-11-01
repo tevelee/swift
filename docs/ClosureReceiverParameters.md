@@ -25,26 +25,25 @@ the experimental parser feature used by ASTGen.
 
 ## Validation and limits
 
-The local macOS SwiftParser suite passed: 2,759 tests, 3 skipped, 0 failures,
-including 22 receiver tests, with raw-syntax validation enabled. Its schema passed
-16 CodeGeneration tests. **The modified compiler has not been built or executed.**
-Compiler regression files are specifications awaiting execution, not proof of
-semantic, ownership, lifetime, or runtime correctness.
+Verified on 2026-11-01 on arm64 macOS. The modified Swift 6.5-dev compiler
+and host standard library built with assertions enabled. All eight receiver
+compiler fixtures and both AST unit tests passed. Eight existing closure/parser/
+capture regressions passed, as did both runtime fixtures with optimization.
+The constraints fixture exercises Swift 5 and 6 modes; parser and AST-dump
+fixtures exercise both the C++ and ASTGen paths.
 
-The current precheck sketch preserves lexical declarations and globals and
-redirects otherwise unresolved names and outer-instance members to the receiver.
-Receiver-before-global lookup remains unimplemented. Nested local functions are
-currently receiver boundaries. The selected parameter is stored by position, so
-cloning the parameter list preserves its role; reordering or removing parameters
-must preserve that invariant. An AST dump marker and two AST unit tests cover
-receiver selection and cloning. `super` is diagnosed within receiver scope;
-`Self` keeps its lexical meaning. These compiler changes are unverified.
-A subsequent source review added a diagnostic for ordinary parameters or locals
-named `self` shadowing the receiver. The constraint fixture covers those cases
-in Swift 5 and 6 modes, but has not run. Capture and weak-unwrapping provenance
-still need validation.
-Serialization, other AST rewrites, builders, actor isolation, and optimized SIL
-need further integration work.
+The independently tested SwiftParser suite passed: 2,759 tests, 3 skipped,
+zero failures, including 22 receiver tests. All 16 schema tests passed and
+regeneration produced no changes. These parser tests used Apple Swift 6.4.2;
+compiler fixtures used the new compiler and matching libraries.
+
+Verification fixed missing feature-registry wiring and incorrect receiver
+lookup for expression-form `Self`. Direct ordinary `self` parameter/local
+shadowing, selected-parameter cloning, nested strong/weak capture, and ownership
+fixtures now have execution evidence. This remains a limited prototype:
+receiver-before-global lookup is unimplemented, local functions are receiver
+boundaries, and serialization/inlinable bodies, broader capture provenance,
+builders, isolation, and general SIL equivalence remain unverified.
 
 Unescaped `{ (self: Item) in ... }` already works in existing Swift with different
 implicit lookup. This branch changes that spelling only behind the experimental
@@ -52,7 +51,9 @@ flag. A proposal needs an explicit compatibility decision before adoption.
 
 ## Compiler fixtures
 
-After building a compiler from this branch and the matching SwiftSyntax branch:
+After building a compiler from this branch and the matching SwiftSyntax branch
+(the successful local configuration and test setup are described in the
+[implementation note](ClosureReceiverParameters/IMPLEMENTATION.md#local-poc-sketch)):
 
 ```sh
 utils/run-test --build-dir <swift-build-directory> \
@@ -66,7 +67,7 @@ utils/run-test --build-dir <swift-build-directory> \
   test/Interpreter/closure_receiver_legacy_typed_self.swift
 ```
 
-These cover syntax and parser parity, inference, lexical shadowing, mutation,
+These passing fixtures cover syntax and parser parity, inference, lexical shadowing, mutation,
 explicit nested captures, strong capture cycles, weak capture release,
 noncopyable arguments, owned noncopyable capture, rejection of borrowed and
 `inout` escaping capture, nonescapable invocation arguments, escaping lifetime

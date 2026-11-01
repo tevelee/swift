@@ -3,8 +3,8 @@
 * Proposal: SE-NNNN (unassigned)
 * Authors: TBD
 * Review Manager: TBD
-* Status: **Pitch draft** — revision 0.5; not submitted for review
-* Implementation: Local compiler POC sketch and tested SwiftSyntax parser; see [implementation status](IMPLEMENTATION.md#local-poc-sketch)
+* Status: **Pitch draft** — revision 0.6; not submitted for review
+* Implementation: Locally tested compiler POC and SwiftSyntax parser; see [implementation status](IMPLEMENTATION.md#local-poc-sketch)
 * Review: Not yet posted
 
 ## Introduction
@@ -21,7 +21,7 @@ The term **closure receiver parameter** describes the language feature. A **scop
 
 The main design uses an explicit binder in each closure. An API-declared receiver is explored under **Alternatives considered**. Two decisions remain open before a formal proposal: a source-compatible spelling for explicitly typed receivers, and whether local function bodies inherit receiver lookup. The shorthand `{ self in ... }` is the starting point; typed examples below are experimental notation.
 
-A feature-gated parser and compiler sketch accompany this draft. Parser tests pass, but the modified compiler has not been built or executed. In particular, its preliminary lookup preserves globals ahead of receiver members; the design below requires the opposite order. [Implementation status](IMPLEMENTATION.md#local-poc-sketch) records the evidence and remaining work.
+A feature-gated parser and compiler prototype accompany this draft. Local validation passes the parser suite, eight compiler fixtures, two AST unit tests, eight neighboring closure regressions, and two optimized runtime fixtures. This is targeted prototype evidence, not full language-feature validation. Its preliminary lookup still preserves globals ahead of receiver members; the design below requires the opposite order. [Implementation status](IMPLEMENTATION.md#local-poc-sketch) records the evidence and remaining work.
 
 ## Motivation
 

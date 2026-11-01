@@ -1,5 +1,5 @@
-// RUN: %target-typecheck-verify-swift -swift-version 6 -enable-experimental-feature ClosureReceiverParameters
-// RUN: %target-typecheck-verify-swift -swift-version 5 -enable-experimental-feature ClosureReceiverParameters
+// RUN: %target-typecheck-verify-swift -swift-version 6 -verify-additional-prefix swift6- -enable-experimental-feature ClosureReceiverParameters
+// RUN: %target-typecheck-verify-swift -swift-version 5 -verify-additional-prefix swift5- -enable-experimental-feature ClosureReceiverParameters
 // REQUIRES: swift_feature_ClosureReceiverParameters
 
 func with<Value, Result>(_ value: Value, _ body: (Value) -> Result) -> Result {
@@ -78,7 +78,7 @@ func nestedCaptures(_ request: Request) {
       guard let self else { return }
       finish()
     }
-    escaping { finish() } // expected-error {{requires explicit use of 'self'}}
+    escaping { finish() } // expected-swift6-error {{requires explicit use of 'self'}} expected-swift5-warning {{requires explicit use of 'self'}} expected-note {{capture 'self' explicitly}} expected-note {{reference 'self.' explicitly}}
   }
 }
 

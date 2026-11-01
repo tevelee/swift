@@ -122,6 +122,9 @@ UNINTERESTING_FEATURE(MemberImportVisibility)
 // ----------------------------------------------------------------------------
 
 UNINTERESTING_FEATURE(StaticAssert)
+// Receiver selection does not change a declaration's interface type.
+// TODO: Account for receiver syntax in serialized inlinable bodies.
+UNINTERESTING_FEATURE(ClosureReceiverParameters)
 UNINTERESTING_FEATURE(NamedOpaqueTypes)
 UNINTERESTING_FEATURE(FlowSensitiveConcurrencyCaptures)
 UNINTERESTING_FEATURE(CodeItemMacros)

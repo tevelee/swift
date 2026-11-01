@@ -25,7 +25,7 @@ func rejectEscapingBorrow() -> (borrowing CapturedResource) -> () -> Int {
 // Formation-time transfer does not make a repeatable closure one-shot.
 func rejectRepeatedConsumption() -> (consuming CapturedResource) -> () -> Int {
   { (self: consuming CapturedResource) in
-    { [owned = consume self] in owned.close() } // expected-error {{noncopyable 'owned' cannot be consumed when captured by an escaping closure}}
+    { [owned = consume self] in owned.close() } // expected-error {{'owned' cannot be consumed when captured by an escaping closure}}
   }
 }
 

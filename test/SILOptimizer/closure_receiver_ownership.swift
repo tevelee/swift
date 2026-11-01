@@ -39,6 +39,7 @@ func makeCounter() -> (borrowing Span<Int>) -> Int {
   { self in count }
 }
 
+@available(macOS 26.0, iOS 26.0, tvOS 26.0, watchOS 26.0, visionOS 26.0, *)
 func inspectSpan(_ values: [Int]) -> Int {
   withBorrowed(values.span) { self in count }
 }

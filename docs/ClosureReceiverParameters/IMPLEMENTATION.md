@@ -1,24 +1,28 @@
 # Closure receiver parameters: implementation investigation
 
-Reviewed on 2026-11-01; execution results below are from 2026-10-30. A local POC sketch now exists; its modified compiler remains unbuilt. This note separates released-compiler experiments, executed parser tests, inspected source, and unverified compiler implementation work.
+Verified on 2026-11-01. The modified compiler and host standard library now build and execute locally. This note distinguishes current prototype tests from the earlier installed-compiler experiments and remaining design work.
 
 ## Local POC sketch
 
-The working checkouts and detailed continuation instructions are under `~/projects/apple/receiver-poc` in the author's local workspace. Swift and SwiftSyntax use branch `feature/closure-receiver-parameters`, published to [tevelee/swift](https://github.com/tevelee/swift/tree/feature/closure-receiver-parameters) and [tevelee/swift-syntax](https://github.com/tevelee/swift-syntax/tree/feature/closure-receiver-parameters); exact revisions and exported patches are recorded there.
+Swift and SwiftSyntax use branch `feature/closure-receiver-parameters`, published to [tevelee/swift](https://github.com/tevelee/swift/tree/feature/closure-receiver-parameters) and [tevelee/swift-syntax](https://github.com/tevelee/swift-syntax/tree/feature/closure-receiver-parameters). The local `~/projects/apple/receiver-poc` directory records exact revisions, build commands, patches, and logs.
 
-The SwiftSyntax change recognizes feature-gated receiver parameters while preserving escaped identifiers. **The parser suite passed: 2,759 tests, 3 skipped, 0 failures**, including **22 receiver tests**, with raw-syntax validation; **16 CodeGeneration schema tests passed**. These runs used Xcode 27.2 beta 3's Apple Swift 6.4.2 without changing the globally selected Xcode.
+| Verification on November 1 | Result |
+| --- | --- |
+| SwiftParser with raw-syntax validation | 2,759 tests, 3 skipped, zero failures; includes 22 receiver tests |
+| CodeGeneration schema and regenerated sources | 16 tests passed; no generated-source diff |
+| Patched Swift compiler and host standard library | Built on arm64 macOS with assertions; Swift 6.5-dev |
+| Receiver compiler fixtures | All eight passed, including Swift 5/6 constraints, parser/AST dump checks, SIL ownership/lifetime diagnostics, and runtime checks |
+| AST receiver selection and parameter cloning | Both unit tests passed |
+| Existing closure/parser/capture regressions | Eight passed |
+| Receiver and legacy typed-self runtime fixtures with optimization | Both passed |
 
-The published SwiftSyntax head also passed [Linux CI](https://github.com/tevelee/swift-syntax/actions/runs/41107071219) on Swift 6.4.1: the parser suite, 16 schema tests, and regenerated-source verification. Two initial workflow failures were corrected: oversized serial test-filter arguments and checkout discovery in the final Git comparison.
+The parser/schema runs used Xcode 27.2 beta 3's Apple Swift 6.4.2. Compiler fixtures used the newly built compiler and libraries, with the Xcode 27.2 SDK and linker. The global Xcode selection was unchanged. The earlier [Linux parser CI](https://github.com/tevelee/swift-syntax/actions/runs/41107071219) remains parser evidence; the compiler results above are local macOS evidence.
 
-The compiler sketch introduces `ClosureReceiverParameters`, a separate AST receiver-parameter role, ASTGen and legacy-parser wiring, ordinary member-expression construction during precheck, and self-capture provenance handling. Eight compiler regression files and two AST unit tests are written. Receiver selection now follows cloned parameter lists by position; the sketch also diagnoses `super` in receiver scope and marks receiver closures in AST dumps. The compiler has **not** been built, and these compiler semantic/ownership/runtime fixtures have **not** been executed against it. Storage prevented a full build on October 30. A November 1 check found about 100 GiB free; the build has not yet been attempted with that space available.
+Verification found and corrected a missing declaration-feature registry entry and a lookup bug that treated expression-form `Self` as a receiver member. Tests now match the compiler's actual diagnostic notes and Swift 5/6 severity, avoid matching the filename in AST negative checks, and annotate the span example's platform availability. Direct escaped `self` parameter/local shadowing is diagnosed and its tests pass.
 
-An additional fixture verified existing capture-ownership diagnostics on installed Swift 6.4.2 without the receiver feature: borrowed and `inout` escaping captures are rejected, as is consuming noncopyable state captured by a repeatable closure. An ordinary owned-capture runtime baseline printed `7 7`. These are baseline checks, not execution of the modified compiler.
+The original build helper incorrectly supplied Xcode as `SWIFT_NATIVE_SWIFT_TOOLS_PATH`, causing missing helper utilities and an older compiler to build the new standard library. Removing that override and clearing its cached value with `-USWIFT_NATIVE_SWIFT_TOOLS_PATH` plus `--reconfigure` restored the native build path. No Xcode files or upstream build-support source changes were required. Runtime tests additionally selected Xcode's linker using `SWIFT_DRIVER_TEST_OPTIONS='-tools-directory <Xcode toolchain bin>'`. Sparse LLVM sources were expanded for configuration dependencies; optional linker, Clang tools, and sanitizer-runtime products were disabled.
 
-The precheck sketch intentionally preserves ordinary nonmember/global lookup, so it does not yet implement the pitch's complete receiver-before-global priority. An outsider review added a diagnostic for direct escaped `self` parameter/local shadowing, with fixtures in Swift 5 and 6 modes; these remain unexecuted. Capture and weak-unwrapping provenance, local functions, serialization, isolation, and lifetime-dependent result integration still require compiler validation.
-
-An additional compatibility probe found that `{ (self: Item) in ... }` is already accepted by Swift 6.3.3 and 6.4.2. Its implicit member lookup remains lexical. The POC keeps reinterpretation behind its experimental flag and tests the old parser behavior with the feature disabled. The pitch's source-compatibility section has been corrected: typed receiver syntax needs a distinct marker or a migration strategy before adoption.
-
-The build wrapper started CMake bootstrapping even with `--dry-run`; the task-owned process group was stopped and its partial bootstrap directory removed, with logs retained. The author's local `receiver-poc/build-compiler.sh` checks free space before invoking that wrapper.
+The precheck prototype intentionally preserves ordinary nonmember/global lookup, so it does not implement receiver-before-global priority. Local functions remain receiver boundaries. General capture-provenance chains, serialization and inlinable bodies, other AST rewrites, isolation, builders, and lifetime-dependent results need further integration work. Optimized runtime checks do not establish general SIL equivalence. Unescaped typed `self` remains an experimental reinterpretation requiring a compatibility decision.
 
 ## Evidence baseline
 
@@ -86,7 +90,7 @@ The ordinary helper implementations from the pitch were separately executed with
 
 ## Follow-up experiments: captures, ownership, and lifetimes
 
-The following standalone programs were compiled with `swiftc -swift-version 6 input.swift -o output` and successful programs were executed. These runs used Swift 6.3.3 with no experimental flags. Full compilation matters because some ownership diagnostics occur after initial type checking. Each case used ordinary named parameters; receiver-binder syntax remains unimplemented.
+The following standalone programs were compiled with `swiftc -swift-version 6 input.swift -o output` and successful programs were executed. These runs used Swift 6.3.3 with no experimental flags. Full compilation matters because some ownership diagnostics occur after initial type checking. Each case used ordinary named parameters; those baseline experiments did not exercise receiver-binder syntax.
 
 | Case | Observed result |
 | --- | --- |

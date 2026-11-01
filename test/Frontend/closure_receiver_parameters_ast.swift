@@ -17,9 +17,9 @@ let typed = { (self: Item) in self.value }
 let middle = { before, self, after in self.value + before + after }
 
 // CHECK-LABEL: pattern_named "escaped"
-// CHECK-NOT: receiver_parameter
+// CHECK-NOT: closure_expr{{.*}}receiver_parameter
 let escaped = { `self` in self.value }
 
 // CHECK-LABEL: pattern_named "ordinary"
-// CHECK-NOT: receiver_parameter
+// CHECK-NOT: closure_expr{{.*}}receiver_parameter
 let ordinary = { item in item.value }

@@ -606,6 +606,7 @@ static Expr *resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE, DeclContext *DC,
     // the normal member constraint machinery. Receiver-vs-global priority is
     // intentionally left for a subsequent constraint-solver implementation.
     if (Loc.isValid() && !Name.isOperator() &&
+        !Name.isSimpleName(Context.Id_Self) &&
         Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters)) {
       if (auto *receiver = findClosureReceiver(DC)) {
         bool hasNonMember = false;
