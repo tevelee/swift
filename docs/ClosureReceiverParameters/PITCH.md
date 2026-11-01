@@ -29,7 +29,7 @@ let length = with("hello") {
 
 A **scope function** is a library use of receiver functions. This proposal introduces the language mechanism, without adding `with`, `run`, `apply`, or other helpers to the standard library.
 
-The feature resembles the way an extension supplies a type for `self`, but it creates no extension declaration, new members, conformances, access privileges, or method-specific initialization rules.
+Swift already has this receiver-scoped programming model in instance methods declared in extensions: `self` denotes the instance, and its members can be used without repeating the instance name. Receiver closures bring that familiar body syntax into a local closure, with the receiver supplied at each invocation.
 
 ## Motivation
 
@@ -56,6 +56,38 @@ with(request) {
 Here `request` is a class instance. Mutating a value-type argument requires an `inout` receiver, described below.
 
 The receiver is part of the callback contract. A stored callback or type alias preserves that contract rather than depending on the name of the original API.
+
+### A locally scoped counterpart to an extension
+
+An extension already lets us write a body in the context of a particular receiver type:
+
+```swift
+extension Request {
+  func sendJSON() {
+    self.timeout = 30
+    addHeader("Accept", value: "application/json")
+    send()
+  }
+}
+
+request.sendJSON()
+```
+
+Inside `sendJSON`, `self` is the `Request` instance on which the method is called. Both explicit `self.timeout` and implicit member access such as `send()` are existing Swift syntax.
+
+A receiver closure lets us write the same body locally, without first declaring a named method:
+
+```swift
+with(request) {
+  self.timeout = 30
+  addHeader("Accept", value: "application/json")
+  send()
+}
+```
+
+The extension establishes a receiver context for a reusable member; `Request.() -> Void` establishes a receiver context for a closure. In this sense, the proposal makes the familiar extension-body model locally scoped: the callback's invocation argument becomes `self` for its body. When nested inside another instance method, that local receiver takes the place of the enclosing implicit `self` within the closure.
+
+The analogy concerns the body's receiver scope. An extension does not literally reassign an enclosing `self`, and a receiver closure does not declare an extension, add members or conformances, or gain an extension's access privileges. The new syntax is the receiver function type; the use of `self` and implicit member access inside the body is already familiar Swift.
 
 ### Kotlin inspiration
 
