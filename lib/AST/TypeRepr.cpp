@@ -461,24 +461,7 @@ void FunctionTypeRepr::printImpl(ASTPrinter &Printer,
                                  const PrintOptions &Opts,
                                  NonRecursivePrintOptions nrOpts) const {
   Printer.callPrintStructurePre(PrintStructureKind::FunctionType);
-  if (hasReceiver()) {
-    auto elements = ArgsTy->getElements();
-    bool parenthesize = isa<SpecifierTypeRepr>(elements.front().Type);
-    if (parenthesize)
-      Printer << "(";
-    printTypeRepr(elements.front().Type, Printer, Opts);
-    if (parenthesize)
-      Printer << ")";
-    Printer << ".(";
-    for (unsigned i = 1; i < elements.size(); ++i) {
-      if (i != 1)
-        Printer << ", ";
-      printTypeRepr(elements[i].Type, Printer, Opts);
-    }
-    Printer << ")";
-  } else {
-    printTypeRepr(ArgsTy, Printer, Opts);
-  }
+  printTypeRepr(ArgsTy, Printer, Opts);
   if (isAsync()) {
     Printer << " ";
     Printer.printKeyword("async", Opts);

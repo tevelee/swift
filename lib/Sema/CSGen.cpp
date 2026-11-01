@@ -1946,11 +1946,7 @@ namespace {
                 TVO_CanBindToInOut | TVO_CanBindToNoEscape | TVO_CanBindToHole);
           }
 
-          auto functionParam = param->toFunctionParam(externalType);
-          if (closure->getReceiverParameter() == param && param->isImplicit())
-            functionParam = functionParam.withFlags(
-                functionParam.getParameterFlags().withReceiver(true));
-          closureParams.push_back(functionParam);
+          closureParams.push_back(param->toFunctionParam(externalType));
         }
 
         checkVariadicParameters(paramList, closure);

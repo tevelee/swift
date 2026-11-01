@@ -5186,9 +5186,6 @@ NeverNullType TypeResolver::resolveASTFunctionType(
   options |= parentOptions.withoutContext().getFlags();
   auto params =
       resolveASTFunctionTypeParams(repr->getArgsTypeRepr(), options, diffKind);
-  if (repr->hasReceiver() && !params.empty())
-    params[0] =
-        params[0].withFlags(params[0].getParameterFlags().withReceiver(true));
   // Ensure that parameter attributes are compatible with the convention
   // chosen.
   switch (representation) {

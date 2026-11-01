@@ -298,8 +298,7 @@ extension ASTGenVisitor {
       thrownType: self.generate(type: node.effectSpecifiers?.thrownError),
       yieldsType: yieldsType.asNullable,
       arrowLoc: self.generateSourceLoc(node.returnClause.arrow),
-      resultType: generate(type: node.returnClause.type),
-      receiverType: generate(type: node.receiver)
+      resultType: generate(type: node.returnClause.type)
     )
   }
 

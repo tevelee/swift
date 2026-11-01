@@ -379,7 +379,6 @@ NODE(AsyncSuspendResumePartialFunction)
 
 // Added in Swift 5.6
 NODE(AccessibleFunctionRecord)
-NODE(Receiver)
 NODE(CompileTimeLiteral)
 
 // Added in Swift 5.7

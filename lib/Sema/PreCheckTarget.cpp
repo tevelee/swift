@@ -1232,8 +1232,6 @@ public:
 };
 
 class PreCheckTarget final : public ASTWalker {
-  Expr *RootExpr = nullptr;
-  Type RootContextualType;
   ASTContext &Ctx;
   DeclContext *DC;
 
@@ -1321,10 +1319,6 @@ public:
   static std::optional<SyntacticElementTarget>
   check(const SyntacticElementTarget &target) {
     PreCheckTarget checker(target.getDeclContext());
-    if (target.kind == SyntacticElementTarget::Kind::expression) {
-      checker.RootExpr = target.getAsExpr();
-      checker.RootContextualType = target.getExprContextualType();
-    }
     auto newTarget = target.walk(checker);
     if (!newTarget)
       return std::nullopt;
@@ -1744,87 +1738,6 @@ bool PreCheckTarget::walkToClosureExprPre(ClosureExpr *closure,
                                          /*implicit=*/true));
     } else {
       closure->setBody(expandedBody);
-    }
-  }
-
-  // A receiver function type supplies an invocation parameter before name
-  // lookup walks the body. It is not a capture of the enclosing instance.
-  if (Ctx.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
-      !closure->getReceiverParameter()) {
-    Type contextualType;
-    auto unwrap = [](Expr *expr) -> Expr * {
-      if (!expr)
-        return nullptr;
-      expr = expr->getSemanticsProvidingExpr();
-      if (auto *capture = dyn_cast<CaptureListExpr>(expr))
-        return capture->getClosureBody();
-      return expr;
-    };
-    if (unwrap(RootExpr) == closure)
-      contextualType = RootContextualType;
-    for (auto *ancestor : llvm::reverse(ExprStack)) {
-      auto *call = dyn_cast<ApplyExpr>(ancestor);
-      if (!call)
-        continue;
-      SmallVector<ValueDecl *, 4> callees;
-      auto *callee = call->getFn()->getSemanticsProvidingExpr();
-      if (auto *reference = dyn_cast<DeclRefExpr>(callee))
-        callees.push_back(reference->getDecl());
-      else if (auto *overloads = dyn_cast<OverloadedDeclRefExpr>(callee))
-        llvm::append_range(callees, overloads->getDecls());
-      auto *arguments = call->getArgs();
-      for (unsigned index = 0; index < arguments->size(); ++index) {
-        if (unwrap(arguments->getExpr(index)) != closure)
-          continue;
-        Type agreedContext;
-        bool allReceivers = !callees.empty();
-        unsigned arity = 0;
-        for (auto *declaration : callees) {
-          auto type = declaration->getInterfaceType();
-          auto *function = type ? type->getAs<AnyFunctionType>() : nullptr;
-          if (!function || index >= function->getNumParams()) {
-            allReceivers = false;
-            break;
-          }
-          auto callback = function->getParams()[index].getPlainType();
-          auto *callbackType =
-              callback->lookThroughAllOptionalTypes()->getAs<AnyFunctionType>();
-          if (!callbackType || callbackType->getParams().empty() ||
-              !callbackType->getParams()[0].getParameterFlags().isReceiver() ||
-              (agreedContext && arity != callbackType->getNumParams())) {
-            allReceivers = false;
-            break;
-          }
-          agreedContext = callback;
-          arity = callbackType->getNumParams();
-        }
-        if (allReceivers)
-          contextualType = agreedContext;
-      }
-      if (contextualType)
-        break;
-    }
-    if (auto *function = contextualType
-                             ? contextualType->lookThroughAllOptionalTypes()
-                                   ->getAs<AnyFunctionType>()
-                             : nullptr) {
-      auto parameters = function->getParams();
-      if (!parameters.empty() &&
-          parameters[0].getParameterFlags().isReceiver()) {
-        if (auto *capture = closure->getCapturedSelfDecl())
-          Ctx.Diags.diagnose(capture->getLoc(),
-                             diag::closure_receiver_capture_conflict);
-        auto *receiver =
-            new (Ctx) ParamDecl(SourceLoc(), SourceLoc(), Identifier(),
-                                closure->getLoc(), Ctx.Id_self, closure);
-        receiver->setSpecifier(ParamSpecifier::Default);
-        receiver->setImplicit();
-        SmallVector<ParamDecl *, 4> declarations{receiver};
-        if (auto *existing = closure->getParameters())
-          llvm::append_range(declarations, *existing);
-        closure->setParameterList(ParameterList::create(Ctx, declarations));
-        closure->setReceiverParameter(0);
-      }
     }
   }
 

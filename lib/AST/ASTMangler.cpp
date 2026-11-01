@@ -3694,8 +3694,6 @@ void ASTMangler::appendParameterTypeListElement(
     appendOperator("Yt");
   if (flags.isConstValue())
     appendOperator("Yg");
-  if (flags.isReceiver())
-    appendOperator("YR");
 
   if (!name.empty())
     appendIdentifier(name.str());

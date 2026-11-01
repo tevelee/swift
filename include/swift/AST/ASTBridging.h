@@ -2860,13 +2860,12 @@ BridgedErrorTypeRepr BridgedErrorTypeRepr_create(BridgedASTContext cContext,
                                                  swift::SourceRange range);
 
 SWIFT_NAME("BridgedFunctionTypeRepr.createParsed(_:argsType:asyncLoc:throwsLoc:"
-           "thrownType:yieldsType:arrowLoc:resultType:receiverType:)")
+           "thrownType:yieldsType:arrowLoc:resultType:)")
 BridgedFunctionTypeRepr BridgedFunctionTypeRepr_createParsed(
     BridgedASTContext cContext, BridgedTypeRepr argsTy,
     swift::SourceLoc asyncLoc, swift::SourceLoc throwsLoc,
     BridgedNullableTypeRepr thrownType, BridgedNullableTypeRepr yieldsType,
-    swift::SourceLoc arrowLoc, BridgedTypeRepr resultType,
-    BridgedNullableTypeRepr receiverType);
+    swift::SourceLoc arrowLoc, BridgedTypeRepr resultType);
 
 SWIFT_NAME("BridgedUnqualifiedIdentTypeRepr.createParsed(_:name:nameLoc:"
            "genericArgs:leftAngleLoc:rightAngleLoc:)")

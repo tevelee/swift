@@ -1,68 +1,83 @@
-# Receiver function types: implementation record
+# Closure receiver bindings: implementation record
 
-Revision 0.8 changes the primary design from an explicit closure binder to Kotlin-style receiver function types, `T.(A) -> R`. The [proposal](PITCH.md) is a draft, not an accepted Swift feature.
+Revision 0.11, 2026-11-01. The active prototype selects an ordinary closure parameter with an explicit `self` binder. Its signature, ownership convention, and invocation syntax remain ordinary Swift. The [pitch](PITCH.md) is a draft, not an accepted language feature.
+
+## Scope of this revision
+
+The earlier explicit-parameter implementation is the semantic foundation. This revision removes the receiver-function experiment from the active compiler and SwiftSyntax grammar:
+
+- No `T.(A) -> R` type syntax or receiver bit in semantic function types.
+- No contextual self insertion or `@receiver` declaration attribute.
+- No lexical callback lookup after a dot.
+- No receiver-function mangling node, parameter serialization bit, or module-format bump.
+- No `FunctionTypeSyntax.receiver` / `.period` children.
+
+The broader experiment was saved before editing in the local `receiver-poc/archive/before-receiver-binding-20261101-123308` directory, including patches and untracked invocation tests. Its prior commits remain in history. Archived results do not validate the active revision.
 
 ## Representation and parsing
 
-SwiftSyntax's `FunctionTypeSyntax` has optional `receiver` and `period` children. Both SwiftParser and the compiler's C++ parser accept the new grammar behind `ClosureReceiverParameters`. ASTGen preserves the receiver through bridging.
+`ClosureExpr` records the selected parameter index. `getReceiverParameter()` resolves the corresponding ordinary `ParamDecl`; parameter-list replacement/cloning preserves receiver identity. The method-self identity predicate is unchanged.
 
-`FunctionTypeRepr` records the receiver role separately from its argument list. Semantic function types place the receiver first in invocation order and mark that parameter in `ParameterTypeFlags`. Ordinary arguments follow it. This lets generic substitution and aliases preserve receiver intent without changing the ordinary argument passing convention.
+The C++ parser and SwiftParser/ASTGen preserve an unescaped `self` keyword in a closure's local parameter-name position when `ClosureReceiverParameters` is enabled. An escaped identifier stays ordinary. Typed ownership modifiers remain part of the parameter, and selection can occur at any parameter position. Duplicate receiver parameters and same-name capture conflicts are diagnosed.
 
-The parameter marker is serialized in Swift modules, and the experimental module-format minor version is incremented. AST printing emits the dot notation. Mangling uses an experimental `YR` parameter annotation, with matching demangling/remangling support; this is not a reserved upstream mangling assignment.
-
-Receiver and ordinary function types are distinct in constraint matching. Explicit adapter closures bridge them; no automatic function-value conversion is proposed in this revision.
-
-## Contextual closure formation
-
-The prototype recognizes a receiver context from an explicitly typed initializer or a directly referenced callable's callback type. It also accepts overload sets when all candidates identify a receiver callback with the same invocation arity. Only the receiver role is selected at this stage: the receiver's actual type remains available for constraint inference.
-
-Before body precheck, it prepends an implicit `self` parameter to the closure's ordinary parameter list. Explicit names and `$0` therefore continue to identify the ordinary parameters after the receiver. The receiver-role query is separate from method-self identity.
-
-This is a bounded contextual-typing implementation. General mixed receiver/ordinary overload sets, callback argument matching involving omitted defaults or reordered labels, and arbitrary member/higher-order callee expressions need solver-integrated contextual formation. They are not established by the direct-call fixtures. The language design describes their intended behavior; this POC does not claim complete contextual inference.
+The feature-disabled typed-self spelling retains its earlier interpretation. This distinction requires a release migration decision: experimental opt-in is not a complete source-compatibility solution.
 
 ## Lookup and capture
 
-The implementation reuses the previous receiver lookup machinery: lexical locals win, receiver membership is deferred until the type is known, and globals are considered only when neither viable nor unviable receiver members exist. An inaccessible or ill-typed member still shadows a global. Selecting a global discards the unused receiver base rather than creating an accidental capture.
+`PreCheckTarget.cpp` finds the active receiver across lexical local contexts, including local functions. It preserves locals/captures and defers unresolved receiver-member lookup until the receiver type is known. The constraint solver checks membership separately within each candidate solution. Existing but inaccessible or inapplicable receiver members prevent global fallback. Dynamic-member lookup follows the normal member path.
 
-Nested local functions inherit the receiver. Nested receiver closures select their own receiver. Capture provenance must reach a genuine receiver parameter through valid captures and optional unwrapping. An arbitrary variable merely named `self` is not sufficient.
+The enclosing instance is not an implicit fallback receiver. Capturing an outer alias is explicit. `Self` retains lexical type meaning, and `super` is rejected across the receiver boundary.
 
-The receiver is an invocation argument, not closure storage. Ordinary ownership and escape checking govern inout, borrowing, consuming, noncopyable, nonescapable, and actor-isolated arguments. Receiver lookup itself introduces no copy, retain, or isolation privilege.
+Capture provenance distinguishes receiver parameters, valid descended captures/weak unwrapping, and arbitrary values named self. A global fallback discards its unused receiver base so that a nested closure does not accidentally retain that receiver. Ordinary explicit-self diagnostics remain active for nested escaping closures.
 
-## Validation
+## Ownership, effects, and ABI
 
-Verified locally on 2026-11-01:
+Receiver lookup eventually becomes ordinary member access. The actual parameter remains borrowing, consuming, inout, isolated, or an ordinary value as declared by its callback type. The binder neither adds a copy nor supplies isolation authority. A supplied argument is distinct from a captured object.
 
-| Check | Result |
-| --- | --- |
-| SwiftParser with raw-syntax validation | 2,762 tests, 3 skipped, zero failures; 25 receiver test methods |
-| CodeGeneration schema | All 16 tests passed |
-| Regenerated syntax sources | Five generated files reproduce exactly |
-| Patched compiler and matching host standard library | Built on arm64 macOS with assertions |
-| Receiver compiler fixtures | 19 passed: six contextual receiver-type fixtures plus 13 explicit-binder regression fixtures |
-| Receiver AST unit tests | Both passed |
-| Neighboring closure/parser/ownership regressions | Eight passed |
-| Optimized runtime fixtures | All four passed |
+The prototype retains existing noncopyable, nonescapable, capture, actor, Sendable, result-builder, interface, and runtime fixtures. These test selected accepted and rejected programs; they do not prove support for every lifetime-dependent result or accessor shape.
 
-The combined run is `receiver-poc/logs/receiver-function-verification.log`.
+Function types and their manglings are ordinary. Exported signatures do not encode receiver intent. Inlinable/client-emitted bodies still need syntax feature guards, and binary-module clients must accept the ordinary signatures. No runtime/ABI extension is proposed.
 
-The exact local verification results are recorded in `~/projects/apple/receiver-poc/README.md` and its logs. Tests use the patched compiler and matching rebuilt host standard library on arm64 macOS. SwiftParser/schema tests separately use Xcode's compiler. Compiler-wide and cross-platform testing are outside this local POC.
+## New composition coverage
 
-New fixtures:
+`test/Constraints/closure_receiver_library_apis.swift` exercises both parser paths where ASTGen is available:
 
-- `test/Constraints/receiver_function_types.swift`: contextual receiver binding, explicit storage, aliases, ordinary invocation, additional parameters, overload inference, noncopyable borrowing, and inout mutation; both C++ and ASTGen parser paths.
-- `test/Constraints/receiver_function_isolation.swift`: actor isolation, Sendable captures, capture-free global fallback, and result builders.
-- `test/SILOptimizer/receiver_function_ownership.swift` and `receiver_function_nonescapable.swift`: noncopyable ownership and nonescapable lifetime enforcement with contextual receivers.
-- `test/Interpreter/receiver_function_types.swift`: actual invocation, mutation, and weak-capture release.
-- `test/ModuleInterface/receiver_function_types.swift`: feature-guarded type printing, interface reconstruction, and an optimized client importing serialized receiver callback types.
+- ordinary callback aliases and named-parameter equivalents;
+- receiver selection in first and later parameter positions;
+- an API called through a stored function value;
+- Array.map, Optional.map, and inout accumulation with Sequence.reduce(into:);
+- consuming configuration helpers, immutable receiver diagnostics;
+- withTaskGroup and AsyncStream callbacks;
+- rejection of bare receiver lookup without a binder, @receiver, and lexical dotted callback invocation.
 
-The earlier explicit-binder implementation and its fixtures remain as an experimental regression baseline. Their passing results alone do not validate contextual receiver formation. The new proposal does not require adopting both syntaxes.
+`test/Interpreter/closure_receiver_library_apis.swift` runs configuration, mapping, accumulation, stored callbacks invoked with different arguments, a builder whose result type differs from its receiver, noncopyable configuration, throwing value/reference examples, task groups, and asynchronous stream consumption. The suite also executes it with optimization.
+
+SwiftParser tests exercise those literal shapes and reject the removed receiver-type grammar. Existing AST unit tests cover receiver selection and parameter cloning.
+
+## Current validation
+
+- Targeted parser suite: 49 tests passed, including 24 receiver tests (`receiver-binding-parser.log`).
+- Full SwiftParser suite: 2,761 scheduled tests, zero failures; three long corpus tests disabled by `SKIP_LONG_TESTS=1` (`receiver-binding-parser-full.log`).
+- CodeGeneration schema: all 16 tests passed (`receiver-binding-schema.log`).
+- Regenerated syntax sources reproduce the restored schema exactly (`receiver-binding-regeneration.log`).
+- Assertion-enabled Swift compiler and matching arm64 macOS host libraries rebuilt successfully (`receiver-binding-build.log`).
+- Compiler verification: 15 fixture files passed, covering parsing, inference, ownership, captures, isolation, nonescapable values, module interfaces, and execution.
+- AST unit tests: 2 passed; neighboring compiler regressions: 8 fixture files passed; optimized runtime: 4 fixture files passed (`receiver-binding-verification.log`).
+
+These are local results, also recorded in `receiver-poc/README.md`; they do not claim compiler-wide or cross-platform validation. Earlier 0.8–0.10 results belong to different source states and are retained only as historical logs.
 
 ## Reproduction
 
-Build the matching Swift and SwiftSyntax branches under `~/projects/apple` with the helper in `receiver-poc/build-compiler.sh`. Run `receiver-poc/verify-compiler.sh` for the selected compiler tests and `RECEIVER_TEST_FILTER=SwiftParserTest receiver-poc/test-parser.sh` for the parser suite.
+Check out the matching Swift and SwiftSyntax branches under `~/projects/apple`:
 
-The local build uses Xcode 27.2 beta 3's SDK and linker through per-process `DEVELOPER_DIR`; runtime tests additionally select that toolchain with `SWIFT_DRIVER_TEST_OPTIONS`. Do not supply Xcode as `--native-swift-tools-path`, because the new compiler must build its matching standard library. No global Xcode selection is changed.
+```sh
+~/projects/apple/receiver-poc/build-compiler.sh
+~/projects/apple/receiver-poc/verify-compiler.sh
+RECEIVER_TEST_FILTER=SwiftParserTest ~/projects/apple/receiver-poc/test-parser.sh --parallel --num-workers 2
+```
 
-## Before production integration
+The helpers set `DEVELOPER_DIR` per process to Xcode 27.2 beta 3 and select its linker for runtime tests. No global Xcode selection is changed. The compiler build uses assertions and matching rebuilt arm64 macOS host libraries. Parser/schema tests independently use the installed Xcode compiler. The build defaults to four jobs.
 
-Complete solver-integrated contextual formation and diagnostic recovery, audit remaining type rewrites and runtime reflection, reserve the mangling/serialization representation upstream, and validate lifetime-dependent results, builders, isolation, and back deployment with the new contextual syntax. Benchmark overload-heavy examples and run the broader compiler and SourceKit suites. Optimized runtime checks are not a proof of general SIL equivalence.
+## Remaining production work
+
+Resolve typed-self source compatibility; audit AST rewrites and all capture contexts; implement SourceKit completion/indexing/refactoring support; measure constraint-solver performance; expand lifetime-dependent result and isolation coverage; and run compiler-wide, cross-platform, and cross-version/back-deployment checks. Ordinary ABI is a design property, not a claim that these broader checks have passed. Local receiver declarations, contextual receiver types, scoped namespaces, and universal fluent helpers are separate design directions.

@@ -13,6 +13,8 @@
 // CHECK: #if compiler(>=5.3) && $ClosureReceiverParameters
 // CHECK: @_alwaysEmitIntoClient public func clientCount
 // CHECK: { self in count }
+// CHECK: public typealias Render = (Swift::String, Swift::Int) -> Swift::String
+// CHECK: public func makeRenderer() -> Receiver::Render
 
 //--- library.swift
 @inlinable public func with<T, R>(_ value: T, _ body: (T) -> R) -> R {
@@ -27,8 +29,21 @@
   with(value) { self in count }
 }
 
+// Receiver role is not part of the exported callback type. A client can
+// store, call, or replace this value without enabling the syntax feature.
+public typealias Render = (String, Int) -> String
+public func makeRenderer() -> Render {
+  { self, repetitions in String(repeating: uppercased(), count: repetitions) }
+}
+
 //--- client.swift
 import Receiver
 public func counts(_ value: String) -> Int {
   receiverCount(value) + clientCount(value)
+}
+public func render(_ value: String) -> String {
+  var callback: Render = makeRenderer()
+  let first = callback(value, 2)
+  callback = { text, count in String(repeating: text, count: count) }
+  return first + callback(value, 1)
 }
