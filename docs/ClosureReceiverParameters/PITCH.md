@@ -3,7 +3,7 @@
 * Proposal: [SE-NNNN](https://github.com/tevelee/swift-evolution/blob/feature/closure-receiver-parameters/proposals/0000-closure-receiver-parameters.md) (unassigned)
 * Authors: [Laszlo Teveli](https://github.com/tevelee)
 * Review Manager: TBD
-* Status: **Pitch draft** — revision 0.11; not submitted for review
+* Status: **Pitch draft** — revision 0.12; not submitted for review
 * Implementation: Experimental [compiler](https://github.com/tevelee/swift/tree/feature/closure-receiver-parameters) and [SwiftSyntax](https://github.com/tevelee/swift-syntax/tree/feature/closure-receiver-parameters) branches. See the [implementation record](https://github.com/tevelee/swift/blob/feature/closure-receiver-parameters/docs/ClosureReceiverParameters/IMPLEMENTATION.md) for tested scope and limitations.
 * Review: Not yet posted
 
@@ -13,98 +13,213 @@ Allow a closure to designate one of its ordinary parameters as its implicit rece
 
 ## Motivation
 
-Many Swift APIs provide a value on which a closure performs a cohesive operation: a configuration value, a mutable accumulator, a task group, or a builder. Today these APIs use ordinary closure parameters:
+A closure often receives one value that is the focus of an entire operation: the request being configured, the report being accumulated, the encoder being written, or the task group being coordinated. Swift already lets the API specify how that value is passed and how long it may be used. The missing convenience is allowing the closure author to write that operation as an instance body, while keeping the receiver boundary visible.
+
+The following examples use existing Swift APIs or explicitly identified library helpers. They do not require universal extension methods, generated setters, new callback types, or new control-flow constructs.
+
+### Configure a request with ordinary control flow
+
+Request construction combines property assignment, method calls, optional inputs, and policy decisions. Using an illustrative `configured` helper, ordinary Swift spells this:
 
 ```swift
-let config = configured(Configuration()) { config in
-  config.name = "test"
-  config.retries = 3
-}
-
-let report = entries.reduce(into: Report()) { report, entry in
-  report.append(entry)
+let request = configured(URLRequest(url: endpoint)) { request in
+  request.httpMethod = "POST"
+  request.httpBody = payload
+  request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+  if let token {
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+  }
+  request.timeoutInterval = isInteractive ? 15 : 60
 }
 ```
 
-The helpers already express the execution and mutation semantics. The remaining question is whether the author can make one supplied argument the implicit receiver of the body:
+With receiver binding, the request becomes the explicit focus of the body:
 
 ```swift
-let config = configured(Configuration()) { self in
-  name = "test"
-  retries = 3
-}
-
-let report = entries.reduce(into: Report()) { self, entry in
-  append(entry)
+let request = configured(URLRequest(url: endpoint)) { self in
+  httpMethod = "POST"
+  httpBody = payload
+  setValue("application/json", forHTTPHeaderField: "Content-Type")
+  if let token {
+    setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+  }
+  timeoutInterval = isInteractive ? 15 : 60
 }
 ```
 
-`configured` is an illustrative library helper, not a new standard-library API. `reduce(into:)` is an existing API and requires no change to accept the second closure. The explicit binder marks the lookup boundary at the call site. Merely passing a closure to a particular function never changes its receiver.
+`URLRequest` is a [Foundation type](https://developer.apple.com/documentation/foundation/urlrequest). `configured` is ordinary library code, with this complete implementation:
+
+```swift
+func configured<Value: ~Copyable>(
+  _ value: consuming Value,
+  _ body: (inout Value) throws -> Void
+) rethrows -> Value {
+  var result = consume value
+  try body(&result)
+  return consume result
+}
+```
+
+The helper produces a configured value that can be bound with `let` or returned directly. Its callback allows existing setters and methods, branches, loops, and throwing operations without creating a fluent counterpart for each operation. `inout` supplies mutable access; receiver binding supplies member lookup. An existing caller variable is not passed by reference by this helper.
+
+This benefit is modest when there are only one or two assignments. A local `var request` followed by statements is also good Swift. The case for receiver binding is cohesive, substantial configuration inside an expression or an existing callback API.
+
+### Accumulate a report with a receiver and an explicit input
+
+An import report may collect several related statistics in a single pass. Today:
+
+```swift
+let report = records.reduce(into: ImportReport()) { report, record in
+  guard record.isValid else {
+    report.rejectedIDs.append(record.id)
+    return
+  }
+  report.acceptedCount += 1
+  report.totalBytes += record.byteCount
+  report.countsByKind[record.kind, default: 0] += 1
+  report.largestRecord = max(report.largestRecord, record.byteCount)
+}
+```
+
+The same existing API accepts a receiver closure:
+
+```swift
+let report = records.reduce(into: ImportReport()) { self, record in
+  guard record.isValid else {
+    rejectedIDs.append(record.id)
+    return
+  }
+  acceptedCount += 1
+  totalBytes += record.byteCount
+  countsByKind[record.kind, default: 0] += 1
+  largestRecord = max(largestRecord, record.byteCount)
+}
+```
+
+[`Sequence.reduce(into:_:)`](https://developer.apple.com/documentation/swift/sequence/reduce(into:_:)) already accepts an update callback of type `(inout Result, Element) throws -> Void`. Its declaration and implementation need no receiver-specific changes. `ImportReport` and `record` are application types; the report holds the fields shown above.
+
+The accumulator is the operation's mutable subject; `record` remains an explicit input. Read-modify-write expressions and dictionary subscripts use the same receiver throughout. `return` exits this invocation of the update closure, just as it does today. This example motivates receiver selection in a multi-parameter closure and adoption by an existing generic API, independently of any new configuration helper.
+
+### Build a binary packet with temporary mutable state
+
+A packet encoder illustrates why the receiver need not be the result. Here an illustrative noncopyable `PacketBuilder` provides `append`, `appendBigEndian`, `count`, `writeLength`, and a consuming `finish` operation. The library controls construction and finalization:
+
+```swift
+func buildPacket(
+  _ body: (inout PacketBuilder) throws -> Void
+) rethrows -> [UInt8] {
+  var builder = PacketBuilder()
+  try body(&builder)
+  return builder.finish()
+}
+```
+
+An ordinary callback uses a named builder:
+
+```swift
+let packet = try buildPacket { builder in
+  builder.append(0xCA)
+  builder.append(0xFE)
+  builder.append(version)
+  let lengthOffset = builder.count
+  builder.append(0)
+  let payloadStart = builder.count
+  for reading in readings {
+    builder.appendBigEndian(reading)
+  }
+  try builder.writeLength(builder.count - payloadStart, at: lengthOffset)
+}
+```
+
+The receiver form reads like a locally scoped encoder method:
+
+```swift
+let packet = try buildPacket { self in
+  append(0xCA)
+  append(0xFE)
+  append(version)
+  let lengthOffset = count
+  append(0)
+  let payloadStart = count
+  for reading in readings {
+    appendBigEndian(reading)
+  }
+  try writeLength(count - payloadStart, at: lengthOffset)
+}
+```
+
+The body mixes writes, reads of evolving state, local offsets, iteration, and validation. `writeLength` rejects payload lengths that cannot fit in the reserved byte. The helper consumes the builder into the final bytes only after the callback succeeds. These are ordinary ownership and error-propagation choices made by the library; the binder does not supply them.
+
+This is an imperative builder, not a result-builder transform. It demonstrates a useful case for retaining arbitrary Swift statements and mutable access to a noncopyable intermediate value. The proposal's executable fixture implements the builder and checks both its encoded bytes and the oversized-payload failure.
+
+### Coordinate a search using an existing task group
+
+A search can query several independent indexes and cancel remaining work once one produces a match. `SearchIndex` and `SearchResult` below are application-defined `Sendable` values. With an ordinary parameter:
+
+```swift
+let match = await withTaskGroup(
+  of: SearchResult?.self, returning: SearchResult?.self
+) { group in
+  for index in indexes {
+    group.addTask { await index.search(query) }
+  }
+  while let candidate = await group.next() {
+    if let match = candidate {
+      group.cancelAll()
+      return match
+    }
+  }
+  return nil
+}
+```
+
+Receiver binding changes only the group operations:
+
+```swift
+let match = await withTaskGroup(
+  of: SearchResult?.self, returning: SearchResult?.self
+) { self in
+  for index in indexes {
+    addTask { await index.search(query) }
+  }
+  while let candidate = await next() {
+    if let match = candidate {
+      cancelAll()
+      return match
+    }
+  }
+  return nil
+}
+```
+
+[`withTaskGroup`](https://developer.apple.com/documentation/swift/withtaskgroup(of:returning:isolation:body:)) already accepts a body of type `(inout TaskGroup<ChildTaskResult>) async -> GroupResult`. Its isolation parameter and structured-concurrency behavior are unchanged. Child tasks receive their normal explicit inputs; they do not use or capture the group receiver. Cancellation is cooperative, and the group still waits for all child tasks before the scope returns. This selects the first matching result observed in completion order, not the first index in the input.
+
+This case uses several operations on an API-owned context. A configuration-return helper or fluent setters cannot express its purpose. No new scope function is needed.
 
 ### Familiar instance bodies, scoped locally
 
 Swift already establishes an implicit receiver in instance methods, including methods declared in extensions:
 
 ```swift
-extension Configuration {
-  mutating func useTestDefaults() {
-    name = "test"
-    retries = 3
+extension ImportReport {
+  mutating func recordAccepted(_ record: Record) {
+    acceptedCount += 1
+    totalBytes += record.byteCount
+    countsByKind[record.kind, default: 0] += 1
+    largestRecord = max(largestRecord, record.byteCount)
   }
 }
 ```
 
-The proposed closure body uses the same instance-member idiom locally, without adding a method to the type. The extension analogy concerns lookup: a receiver closure is not an extension declaration, gains no access privileges, and adds no members or conformances.
+The proposed closure body uses that familiar instance-member idiom for a local operation. Reusable domain behavior should still become a named method. Receiver binding helps when the operation belongs to this call site, depends on surrounding inputs, or uses a callback whose scope the library controls. It adds no members or conformances and grants no extension-specific access privileges.
 
-### Beyond configuration
+### What these examples establish
 
-A builder can supply an intermediate type different from its result:
+The common requirement is a visible choice of one existing argument as the body's implicit receiver. Configuration, accumulation, encoding, and task coordination retain their separate library semantics. Function types, mutation rights, and execution policies need no receiver-specific representation.
 
-```swift
-func buildText(_ body: (inout TextBuilder) -> Void) -> String {
-  var builder = TextBuilder()
-  body(&builder)
-  return builder.text
-}
+This is a readability proposal, not a new computational capability. The important question is whether naming the receiver once at the scope boundary makes a cohesive body easier to read than repeating its name throughout. Bodies that primarily compare several peer objects often benefit from keeping all their names explicit. For one property, `document.title` is simpler than `withValue(document) { self in title }`. Deeply nested receiver scopes are not motivating examples.
 
-let text = buildText { self in
-  append("Build: ")
-  append(buildName)
-}
-```
-
-An existing API can supply a structured concurrency context:
-
-```swift
-let total = await withTaskGroup(of: Int.self) { self in
-  addTask { 20 }
-  addTask { 22 }
-  var sum = 0
-  for await value in self { sum += value }
-  return sum
-}
-```
-
-A producer API can supply a continuation:
-
-```swift
-let events = AsyncStream<Int> { self in
-  yield(10)
-  yield(20)
-  finish()
-}
-```
-
-Receiver binding does not establish task-group structure, make a stream cold, or determine when a callback runs. Those remain properties of the API. A receiver callback can be stored and invoked later with different arguments:
-
-```swift
-let render: (Document, Theme) -> String = { self, theme in
-  title + theme.separator
-}
-let text = render(document, theme)
-```
-
-For a single property, `document.title` remains simpler than introducing a scope. The motivation is a body with several related operations, not shortening every member access.
+The prototype's `closure_receiver_motivating_examples.swift` runtime fixture checks all four cases, including named-parameter equivalents, report branches, packet length validation, and matching/empty/exhausted searches. That establishes feasibility for these examples; it does not settle the readability judgment.
 
 ## Proposed solution
 
@@ -196,18 +311,7 @@ The selected parameter retains its ordinary convention:
 
 For a class value, an immutable reference can still permit mutation of the referenced object's mutable properties. For a struct, changing stored properties requires mutable access. Receiver status does not make an immutable parameter mutable.
 
-This complete helper illustrates configure-and-return without requiring `Copyable`:
-
-```swift
-func configured<Value: ~Copyable>(
-  _ value: consuming Value,
-  _ body: (inout Value) throws -> Void
-) rethrows -> Value {
-  var result = consume value
-  try body(&result)
-  return consume result
-}
-```
+The `configured` helper in the motivation accepts `Value: ~Copyable` and a callback of type `(inout Value) throws -> Void`.
 
 The helper owns its input, lends mutable access to local storage, and returns the result. It does not update an existing caller variable by reference. A class input still denotes the same object unless replaced; the helper does not clone it. Throwing does not imply rollback of changes to shared objects. A separate operation accepting `inout` caller storage has separate mutation semantics and need not return a value.
 
@@ -313,6 +417,20 @@ This pitch responds with an explicit lookup boundary, an ordinary callback type,
 ### Kotlin comparison
 
 [Kotlin scope functions](https://kotlinlang.org/docs/scope-functions.html) separate how the value is accessed from what is returned. `let` and `also` use ordinary arguments; `run`, `with`, and `apply` use receivers. The helpers are library APIs, not individually privileged syntax.
+
+The closest Kotlin analogue of the packet builder is a library-controlled construction callback. For example, [buildList](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/build-list.html) declares a `MutableList<E>.() -> Unit` callback and returns `List<E>`:
+
+```kotlin
+val arguments = buildList {
+    add("compile")
+    if (warningsAsErrors) add("--warnings-as-errors")
+    addAll(sourceFiles)
+}
+```
+
+The receiver holds evolving construction state while local inputs remain named. Swift can express this pattern with an ordinary `inout` callback and an explicit `self` binder, as in `buildPacket`. Kotlin's mutable/read-only list distinction does not itself provide Swift's ownership or lifetime guarantees; those must come from the Swift helper's actual types and parameter conventions.
+
+Kotlin's `let` is a useful counterexample: `source?.let { parse(it) }` uses an ordinary argument. Its closest Swift spelling, `source.map { parse($0) }`, already works without receiver binding. The goal is to support bodies centered on receiver operations, not to reproduce every Kotlin helper under a new Swift name.
 
 Further motivating APIs include [buildList](https://kotlinlang.org/api/core/kotlin-stdlib/kotlin.collections/build-list.html), [Json builders](https://kotlinlang.org/api/kotlinx.serialization/kotlinx-serialization-json/kotlinx.serialization.json/-json.html), [coroutineScope](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/coroutine-scope.html), and [Ktor callbacks with a receiver and ordinary arguments](https://api.ktor.io/ktor-server-core/io.ktor.server.routing/post.html). Their receiver role does not by itself establish resource safety, structured concurrency, or deferred execution.
 

@@ -1,6 +1,6 @@
 # Closure receiver bindings: implementation record
 
-Revision 0.11, 2026-11-01. The active prototype selects an ordinary closure parameter with an explicit `self` binder. Its signature, ownership convention, and invocation syntax remain ordinary Swift. The [pitch](PITCH.md) is a draft, not an accepted language feature.
+Revision 0.12, 2026-11-01. The 0.12 update expands motivation and executable examples; compiler semantics remain those verified for 0.11. The active prototype selects an ordinary closure parameter with an explicit `self` binder. Its signature, ownership convention, and invocation syntax remain ordinary Swift. The [pitch](PITCH.md) is a draft, not an accepted language feature.
 
 ## Scope of this revision
 
@@ -54,7 +54,18 @@ Function types and their manglings are ordinary. Exported signatures do not enco
 
 SwiftParser tests exercise those literal shapes and reject the removed receiver-type grammar. Existing AST unit tests cover receiver selection and parameter cloning.
 
-## Current validation
+## Executable motivating examples
+
+Revision 0.12 replaces short motivational sketches with four substantial before/after examples in the pitch. `test/Interpreter/closure_receiver_motivating_examples.swift` supplies complete application types and tests named-parameter and receiver-binding implementations:
+
+- Foundation URLRequest configuration with and without authorization, using both timeout policies; no network request is sent.
+- A multi-field import report, including rejection, dictionary updates, maximum size, and empty input.
+- A noncopyable packet builder, including exact big-endian bytes, length backpatching, empty payload, and oversized-payload rejection.
+- Task-group search with a match, no match, and no indexes. The fixture uses one possible match so assertions do not depend on task completion order.
+
+The new fixture passed in ordinary and optimized execution on arm64 macOS (`receiver-motivation-tests.log`, `receiver-motivation-optimized-tests.log`). Foundation coverage requires Objective-C interoperability. Both forms are tested against the previously built compiler; this update changes documentation and tests, not compiler semantics. The reproduction script includes the new fixture in both runtime runs.
+
+## Compiler and parser baseline validation (revision 0.11)
 
 - Targeted parser suite: 49 tests passed, including 24 receiver tests (`receiver-binding-parser.log`).
 - Full SwiftParser suite: 2,761 scheduled tests, zero failures; three long corpus tests disabled by `SKIP_LONG_TESTS=1` (`receiver-binding-parser-full.log`).
