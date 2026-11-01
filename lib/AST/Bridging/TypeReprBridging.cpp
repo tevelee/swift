@@ -268,13 +268,29 @@ BridgedFunctionTypeRepr BridgedFunctionTypeRepr_createParsed(
     BridgedASTContext cContext, BridgedTypeRepr argsTy, SourceLoc asyncLoc,
     SourceLoc throwsLoc, BridgedNullableTypeRepr thrownType,
     BridgedNullableTypeRepr yieldsType, SourceLoc arrowLoc,
-    BridgedTypeRepr resultType) {
+    BridgedTypeRepr resultType, BridgedNullableTypeRepr receiverType) {
   ASTContext &context = cContext.unbridged();
-  return new (context)
-      FunctionTypeRepr(nullptr, cast<TupleTypeRepr>(argsTy.unbridged()),
-                       asyncLoc, throwsLoc, thrownType.unbridged(),
-                       cast_or_null<TupleTypeRepr>(yieldsType.unbridged()),
-                       arrowLoc, resultType.unbridged());
+  auto *arguments = cast<TupleTypeRepr>(argsTy.unbridged());
+  if (auto *receiver = receiverType.unbridged()) {
+    SmallVector<TupleTypeReprElement, 4> elements;
+    TupleTypeReprElement element;
+    element.Type = receiver;
+    if (auto *tuple = dyn_cast<TupleTypeRepr>(receiver))
+      if (tuple->getElements().size() == 1)
+        element = tuple->getElements()[0];
+    elements.push_back(element);
+    llvm::append_range(elements, arguments->getElements());
+    arguments = TupleTypeRepr::create(
+        context, elements,
+        SourceRange(receiver->getStartLoc(), arguments->getEndLoc()));
+  }
+  auto *result = new (context) FunctionTypeRepr(
+      nullptr, arguments, asyncLoc, throwsLoc, thrownType.unbridged(),
+      cast_or_null<TupleTypeRepr>(yieldsType.unbridged()), arrowLoc,
+      resultType.unbridged());
+  if (receiverType.unbridged())
+    result->setHasReceiver();
+  return result;
 }
 
 BridgedNamedOpaqueReturnTypeRepr BridgedNamedOpaqueReturnTypeRepr_createParsed(

@@ -7660,8 +7660,24 @@ public:
 
     printFunctionExtInfo(T, nrOptions);
 
+    auto parameters = T->getParams();
+    if (!parameters.empty() && parameters[0].getParameterFlags().isReceiver()) {
+      auto receiver = parameters[0];
+      auto flags = receiver.getParameterFlags().withReceiver(false);
+      bool parenthesize = !flags.isNone();
+      if (parenthesize)
+        Printer << "(";
+      printParameterFlags(Printer, Options, nullptr, flags,
+                          receiver.getPlainType(), false);
+      receiver.getPlainType()->print(Printer, Options);
+      if (parenthesize)
+        Printer << ")";
+      Printer << ".";
+      parameters = parameters.drop_front();
+    }
+
     // If we're stripping argument labels from types, do it when printing.
-    visitAnyFunctionTypeParams(T->getParams(),
+    visitAnyFunctionTypeParams(parameters,
                                /*printExternalLabels*/ false,
                                /*printAllLabels*/
                                shouldPrintLabelsForLifetimeAttributes(T),

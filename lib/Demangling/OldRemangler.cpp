@@ -2030,6 +2030,12 @@ ManglingError Remangler::mangleSending(Node *node, unsigned depth) {
   return mangleSingleChildNode(node, depth + 1); // type
 }
 
+ManglingError Remangler::mangleReceiver(Node *node, unsigned depth) {
+  RETURN_IF_ERROR(mangleSingleChildNode(node, depth + 1));
+  Buffer << "YR";
+  return ManglingError::Success;
+}
+
 ManglingError Remangler::mangleCompileTimeLiteral(Node *node, unsigned depth) {
   Buffer << "Yt";
   return mangleSingleChildNode(node, depth + 1); // type

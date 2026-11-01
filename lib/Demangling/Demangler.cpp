@@ -1092,6 +1092,9 @@ NodePointer Demangler::demangleTypeAnnotation() {
         createWithChild(Node::Kind::NoDerivative, popTypeAndGetChild()));
   case 'K':
     return createWithChild(Node::Kind::TypedThrowsAnnotation, popTypeAndGetChild());
+  case 'R':
+    return createType(
+        createWithChild(Node::Kind::Receiver, popTypeAndGetChild()));
   case 't':
     return createType(
         createWithChild(Node::Kind::CompileTimeLiteral, popTypeAndGetChild()));

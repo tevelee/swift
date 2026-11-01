@@ -536,6 +536,7 @@ class FunctionTypeRepr : public TypeRepr {
   GenericSignature PatternGenericSig;
   ArrayRef<TypeRepr *> PatternSubs;
 
+  bool HasReceiver = false;
   TupleTypeRepr *ArgsTy;
   TupleTypeRepr *YieldsTy;
   TypeRepr *RetTy;
@@ -581,6 +582,9 @@ public:
     assert(!GenericSig);
     GenericSig = genericSig;
   }
+
+  bool hasReceiver() const { return HasReceiver; }
+  void setHasReceiver() { HasReceiver = true; }
 
   TupleTypeRepr *getArgsTypeRepr() const { return ArgsTy; }
   TypeRepr *getThrownTypeRepr() const { return ThrownTy; }

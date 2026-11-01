@@ -124,6 +124,12 @@ UNINTERESTING_FEATURE(MemberImportVisibility)
 
 UNINTERESTING_FEATURE(StaticAssert)
 static bool usesFeatureClosureReceiverParameters(Decl *decl) {
+  if (usesTypeMatching(decl, [](Type type) {
+        auto *function = type->getAs<AnyFunctionType>();
+        return function && !function->getParams().empty() &&
+               function->getParams()[0].getParameterFlags().isReceiver();
+      }))
+    return true;
   if (!decl->getAttrs().hasAttribute<InlinableAttr>() &&
       !decl->getAttrs().hasAttribute<TransparentAttr>() &&
       !decl->getAttrs().hasAttribute<AlwaysEmitIntoClientAttr>())

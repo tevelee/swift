@@ -289,6 +289,9 @@ ParserResult<TypeRepr> Parser::parseTypeSimple(
   // '.X', '.Type', '.Protocol', '?', '!', '[]'.
   while (ty.isNonNull()) {
     if (Tok.isAny(tok::period, tok::period_prefix)) {
+      if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+          peekToken().is(tok::l_paren))
+        break;
       if (peekToken().is(tok::code_complete)) {
         consumeToken();
 
@@ -512,6 +515,18 @@ ParserResult<TypeRepr> Parser::parseTypeScalar(
   if (ty.isNull())
     return status;
   auto tyR = ty.get();
+  TypeRepr *receiverTy = nullptr;
+  if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+      Tok.isAny(tok::period, tok::period_prefix) &&
+      peekToken().is(tok::l_paren)) {
+    consumeToken();
+    receiverTy = tyR;
+    auto arguments = parseTypeSimple(MessageID, reason);
+    status |= arguments;
+    if (arguments.isNull())
+      return status;
+    tyR = arguments.get();
+  }
 
   // Parse effects specifiers.
   // Don't consume them, if there's no following '->', so we can emit a more
@@ -526,6 +541,11 @@ ParserResult<TypeRepr> Parser::parseTypeScalar(
                                      throwsLoc, /*rethrows=*/nullptr,
                                      thrownTy);
     status |= parseYieldTypes(yieldsTy);
+  }
+
+  if (receiverTy && !Tok.is(tok::arrow)) {
+    diagnose(Tok, diag::func_decl_expected_arrow);
+    return makeParserError();
   }
 
   // Handle type-function if we have an arrow.
@@ -620,10 +640,25 @@ ParserResult<TypeRepr> Parser::parseTypeScalar(
       }
     }
 
+    if (receiverTy) {
+      SmallVector<TupleTypeReprElement, 4> elements;
+      TupleTypeReprElement receiver;
+      receiver.Type = receiverTy;
+      if (auto *tuple = dyn_cast<TupleTypeRepr>(receiverTy))
+        if (tuple->getElements().size() == 1)
+          receiver = tuple->getElements()[0];
+      elements.push_back(receiver);
+      llvm::append_range(elements, argsTyR->getElements());
+      argsTyR = TupleTypeRepr::create(
+          Context, elements,
+          SourceRange(receiverTy->getStartLoc(), argsTyR->getEndLoc()));
+    }
     tyR = new (Context)
         FunctionTypeRepr(generics, argsTyR, asyncLoc, throwsLoc, thrownTy,
                          yieldsTy, arrowLoc, SecondHalf.get(), patternGenerics,
                          patternSubsTypes, invocationSubsTypes);
+    if (receiverTy)
+      cast<FunctionTypeRepr>(tyR)->setHasReceiver();
   } else if (auto firstGenerics = generics ? generics : patternGenerics) {
     // Only function types may be generic.
     auto brackets = firstGenerics->getSourceRange();
@@ -864,6 +899,10 @@ ParserResult<TypeRepr> Parser::parseQualifiedDeclNameBaseType() {
     // Treat 'Foo.<anything>' as an attempt to write a dotted type
     // unless <anything> is 'Type'.
     if ((Tok.is(tok::period) || Tok.is(tok::period_prefix))) {
+      if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+          peekToken().is(tok::l_paren))
+        break;
+
       if (peekToken().is(tok::code_complete)) {
         Status.setHasCodeCompletionAndIsError();
         break;
@@ -947,6 +986,9 @@ ParserResult<TypeRepr> Parser::parseTypeDotted(ParserResult<TypeRepr> Base) {
   TypeRepr *Result = Base.get();
 
   while (Tok.isAny(tok::period, tok::period_prefix)) {
+    if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+        peekToken().is(tok::l_paren))
+      break;
     if (peekToken().is(tok::code_complete)) {
       // Code completion for "type-simple '.'" is handled in 'parseTypeSimple'.
       break;
@@ -1870,6 +1912,9 @@ bool Parser::canParseTypeSimple() {
   // type-simple.
   while (true) {
     if (Tok.isAny(tok::period_prefix, tok::period)) {
+      if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+          peekToken().is(tok::l_paren))
+        break;
       consumeToken();
 
       if (Tok.isContextualKeyword("Type") ||
@@ -1970,6 +2015,15 @@ bool Parser::canParseTypeScalar() {
 
   if (!canParseTypeSimpleOrComposition())
     return false;
+
+  if (Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters) &&
+      Tok.isAny(tok::period, tok::period_prefix) &&
+      peekToken().is(tok::l_paren)) {
+    consumeToken();
+    consumeToken(tok::l_paren);
+    if (!canParseTypeTupleBody())
+      return false;
+  }
 
   if (isAtFunctionTypeArrow()) {
     // Handle type-function if we have an '->' with optional

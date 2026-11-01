@@ -2634,7 +2634,8 @@ class ParameterTypeFlags {
     Sending = 1 << 9,
     Addressable = 1 << 10,
     ConstValue = 1 << 11,
-    NumBits = 12
+    Receiver = 1 << 12,
+    NumBits = 13
   };
   OptionSet<ParameterFlags> value;
   static_assert(NumBits <= 8*sizeof(OptionSet<ParameterFlags>), "overflowed");
@@ -2680,6 +2681,10 @@ public:
   bool isSending() const { return value.contains(Sending); }
   bool isAddressable() const { return value.contains(Addressable); }
   bool isConstValue() const { return value.contains(ConstValue); }
+  bool isReceiver() const { return value.contains(Receiver); }
+  ParameterTypeFlags withReceiver(bool receiver) const {
+    return ParameterTypeFlags(receiver ? value | Receiver : value - Receiver);
+  }
 
   /// Get the spelling of the parameter specifier used on the parameter.
   ParamSpecifier getOwnershipSpecifier() const {

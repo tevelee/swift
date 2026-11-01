@@ -427,6 +427,7 @@ bool NodePrinter::isSimpleType(NodePointer Node) {
   case Node::Kind::Initializer:
   case Node::Kind::Isolated:
   case Node::Kind::Sending:
+  case Node::Kind::Receiver:
   case Node::Kind::CompileTimeLiteral:
   case Node::Kind::ConstValue:
   case Node::Kind::PropertyWrapperBackingInitializer:
@@ -1856,6 +1857,10 @@ NodePointer NodePrinter::print(NodePointer Node, unsigned depth,
     return nullptr;
   case Node::Kind::Sending:
     Printer << "sending ";
+    print(Node->getChild(0), depth + 1);
+    return nullptr;
+  case Node::Kind::Receiver:
+    Printer << "receiver ";
     print(Node->getChild(0), depth + 1);
     return nullptr;
   case Node::Kind::CompileTimeLiteral:

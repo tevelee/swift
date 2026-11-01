@@ -6242,7 +6242,8 @@ public:
           paramFlags.isAutoClosure(), paramFlags.isNonEphemeral(), rawOwnership,
           paramFlags.isIsolated(), paramFlags.isNoDerivative(),
           paramFlags.isCompileTimeLiteral(), paramFlags.isConstValue(),
-          paramFlags.isSending(), paramFlags.isAddressable());
+          paramFlags.isSending(), paramFlags.isAddressable(),
+          paramFlags.isReceiver());
     }
   }
 
