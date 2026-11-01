@@ -525,9 +525,6 @@ static ParamDecl *findClosureReceiver(DeclContext *DC) {
     if (auto *closure = dyn_cast<ClosureExpr>(context)) {
       if (auto *receiver = closure->getReceiverParameter())
         return receiver;
-    } else if (isa<AbstractFunctionDecl>(context)) {
-      // A nested function is a new implicit receiver boundary for this POC.
-      break;
     }
   }
   return nullptr;
@@ -600,23 +597,25 @@ static Expr *resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE, DeclContext *DC,
 
     Lookup = TypeChecker::lookupUnqualified(DC, LookupName, Loc, lookupOptions);
 
-    // POC: retain ordinary lexical/global declarations, but redirect otherwise
-    // unresolved names and outer-instance members through the selected
-    // parameter. An UnresolvedDotExpr allows its base type to be inferred by
-    // the normal member constraint machinery. Receiver-vs-global priority is
-    // intentionally left for a subsequent constraint-solver implementation.
-    if (Loc.isValid() && !Name.isOperator() &&
+    // Defer receiver membership and global fallback until the solver knows
+    // the receiver type. Ordinary lexical bindings retain precedence.
+    if (Loc.isValid() && !Name.isOperator() && !Name.hasModuleSelector() &&
         !Name.isSimpleName(Context.Id_Self) &&
         Context.LangOpts.hasFeature(Feature::ClosureReceiverParameters)) {
       if (auto *receiver = findClosureReceiver(DC)) {
-        bool hasNonMember = false;
-        for (auto result : Lookup.innerResults()) {
+        bool hasLexicalBinding = false;
+        SmallVector<ValueDecl *, 4> fallback;
+        for (auto result : Lookup.allResults()) {
+          auto *decl = result.getValueDecl();
           if (!result.getDeclContext()) {
-            hasNonMember = true;
-            break;
+            if (decl->getDeclContext()->isLocalContext() ||
+                isa<ModuleDecl>(decl))
+              hasLexicalBinding = true;
+            else
+              fallback.push_back(decl);
           }
         }
-        if (!hasNonMember) {
+        if (!hasLexicalBinding) {
           SmallVector<ValueDecl *, 2> selfBindings;
           ASTScope::lookupLocalDecls(
               DC->getParentSourceFile(), DeclNameRef(Context.Id_self), Loc,
@@ -639,9 +638,11 @@ static Expr *resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE, DeclContext *DC,
           }
           auto *baseExpr = new (Context)
               DeclRefExpr(base, UDRE->getNameLoc(), /*Implicit=*/true);
-          return new (Context) UnresolvedDotExpr(
+          auto *member = new (Context) UnresolvedDotExpr(
               baseExpr, SourceLoc(), Name, UDRE->getNameLoc(),
-              UDRE->isImplicit());
+              UDRE->isImplicit(), Context.AllocateCopy(fallback));
+          member->setIsClosureReceiverLookup();
+          return member;
         }
       }
     }

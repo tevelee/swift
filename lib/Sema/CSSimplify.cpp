@@ -11726,9 +11726,16 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyMemberConstraint(
     }
   }
 
+  auto *receiverLookup = getAsExpr<UnresolvedDotExpr>(locator->getAnchor());
+  if (receiverLookup && (!receiverLookup->isClosureReceiverLookup() ||
+                         locator->getPath().size() != 1 ||
+                         !locator->isLastElement<LocatorPathElt::Member>()))
+    receiverLookup = nullptr;
+
   MemberLookupResult result =
       performMemberLookup(kind, member, baseTy, functionRefInfo, locator,
-                          /*includeInaccessibleMembers*/ shouldAttemptFixes());
+                          /*includeInaccessibleMembers*/
+                          receiverLookup || shouldAttemptFixes());
 
   switch (result.OverallResult) {
   case MemberLookupResult::Unsolved:
@@ -11741,6 +11748,26 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyMemberConstraint(
   }
 
   SmallVector<Constraint *, 4> candidates;
+
+  // This decision is local to the current solver branch. An inaccessible or
+  // ill-typed member still shadows globals; overload ranking must not turn a
+  // failed member reference into a successful call to an unrelated global.
+  if (receiverLookup &&
+      result.OverallResult == MemberLookupResult::HasResults &&
+      result.ViableCandidates.empty() && result.UnviableCandidates.empty() &&
+      !receiverLookup->getOuterAlternatives().empty()) {
+    SmallVector<OverloadChoice, 4> fallback;
+    for (auto *decl : receiverLookup->getOuterAlternatives())
+      fallback.push_back(OverloadChoice::getDecl(decl, functionRefInfo));
+    generateOverloadConstraints(
+        candidates, memberTy, fallback, useDC, locator,
+        /*requiresFix=*/false,
+        [](unsigned, const OverloadChoice &) -> ConstraintFix * {
+          return nullptr;
+        });
+    addOverloadSet(candidates, locator);
+    return SolutionKind::Solved;
+  }
 
   // If we found viable candidates, then we're done!
   if (!result.ViableCandidates.empty()) {

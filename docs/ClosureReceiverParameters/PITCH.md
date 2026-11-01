@@ -3,7 +3,7 @@
 * Proposal: SE-NNNN (unassigned)
 * Authors: TBD
 * Review Manager: TBD
-* Status: **Pitch draft** — revision 0.6; not submitted for review
+* Status: **Pitch draft** — revision 0.7; not submitted for review
 * Implementation: Locally tested compiler POC and SwiftSyntax parser; see [implementation status](IMPLEMENTATION.md#local-poc-sketch)
 * Review: Not yet posted
 
@@ -19,9 +19,9 @@ let names = users.map { self in
 
 The term **closure receiver parameter** describes the language feature. A **scope function**, such as Kotlin's `run` or `apply`, is one library use of it. This pitch proposes receiver binding; it does not propose new standard-library functions.
 
-The main design uses an explicit binder in each closure. An API-declared receiver is explored under **Alternatives considered**. Two decisions remain open before a formal proposal: a source-compatible spelling for explicitly typed receivers, and whether local function bodies inherit receiver lookup. The shorthand `{ self in ... }` is the starting point; typed examples below are experimental notation.
+The main design uses an explicit binder in each closure. An API-declared receiver is explored under **Alternatives considered**. A source-compatible spelling for explicitly typed receivers remains open before a formal proposal. Local function bodies inherit the nearest receiver scope. The shorthand `{ self in ... }` is the starting point; typed examples below are experimental notation.
 
-A feature-gated parser and compiler prototype accompany this draft. Local validation passes the parser suite, eight compiler fixtures, two AST unit tests, eight neighboring closure regressions, and two optimized runtime fixtures. This is targeted prototype evidence, not full language-feature validation. Its preliminary lookup still preserves globals ahead of receiver members; the design below requires the opposite order. [Implementation status](IMPLEMENTATION.md#local-poc-sketch) records the evidence and remaining work.
+A feature-gated parser and compiler prototype accompany this draft. Local validation passes the parser suite, 13 compiler fixtures, two AST unit tests, eight neighboring closure regressions, and three optimized runtime fixtures. This is targeted prototype evidence, not full language-feature validation. Its deferred member lookup implements receiver-before-global priority, including inferred receiver types and inaccessible-member shadowing. [Implementation status](IMPLEMENTATION.md#local-poc-sketch) records the evidence and remaining work.
 
 ## Motivation
 
@@ -240,7 +240,7 @@ Within the receiver closure, `self.member` refers to the selected parameter, sub
 
 Receiver lookup does not fall back to members of an enclosing implicit `self`. Nesting receiver closures therefore selects one receiver at a time; it does not build an implicit receiver stack. Lexical type-name lookup remains available, but this feature does not import the receiver type's nested declarations as an extension body would.
 
-Finding a receiver member by name is a shadowing decision. An inaccessible member or an incompatible overload produces a diagnostic; it does not silently redirect the expression to an outer receiver or a global overload. The prototype must validate the implementation of this rule when the receiver's type is inferred.
+Finding a receiver member by name is a shadowing decision. An inaccessible member or an incompatible overload produces a diagnostic; it does not silently redirect the expression to an outer receiver or a global overload. The prototype tests this rule with inferred receiver types, generic constraints, dynamic members, and overloaded calls.
 
 For example:
 
@@ -270,7 +270,7 @@ Capture initializers are evaluated in the enclosing context, before the receiver
 
 An unrelated binding named `` `self` `` does not become a receiver. If a nested parameter or local declaration shadows the receiver name, implicit receiver-member access is diagnosed; explicit access through a suitable alias remains available. A simple `[self]` capture, or a valid unwrap of `[weak self]`, preserves receiver provenance under the capture rules below. This prevents an ordinary identifier from silently changing the receiver.
 
-Local functions need a separate decision. For example:
+Local functions inherit the nearest receiver scope. For example:
 
 ```swift
 with(request) { self in
@@ -279,7 +279,7 @@ with(request) { self in
 }
 ```
 
-Should `send()` inherit the receiver as it would in a nested nonescaping closure, or require an explicit base? The prototype stops receiver lookup at a local function boundary. This draft leaves that rule open rather than presenting the prototype boundary as a settled language restriction.
+`send()` resolves on the supplied request. The local function captures any values it uses under ordinary Swift rules; receiver lookup does not grant permission to escape borrowed or exclusive access. A nested type declaration starts a separate type context and does not inherit the receiver. A nested receiver closure selects its own receiver.
 
 ### Relationship to methods and extensions
 
@@ -517,7 +517,7 @@ The immediate questions for this pitch are:
 * Is changing the meaning of `self` acceptable when the closure literal makes that choice explicit?
 * Should captured lexical locals retain the precedence specified above, and should outer implicit receivers be excluded completely?
 * Is a literal-selected receiver sufficient, or does an API need to declare receiver behavior as part of its contract?
-* Which typed spelling preserves existing source, and should local functions inherit receiver lookup?
+* Which typed spelling preserves existing source?
 
 ## Alternatives considered
 

@@ -1360,9 +1360,10 @@ namespace {
         return methodTy;
       }
 
-      return addMemberRefConstraints(expr, expr->getBase(), expr->getName(),
-                                     expr->getFunctionRefInfo(),
-                                     expr->getOuterAlternatives());
+      return addMemberRefConstraints(
+          expr, expr->getBase(), expr->getName(), expr->getFunctionRefInfo(),
+          expr->isClosureReceiverLookup() ? ArrayRef<ValueDecl *>()
+                                          : expr->getOuterAlternatives());
     }
 
     /// Given a set of specialization arguments, resolve those arguments and

@@ -15,6 +15,7 @@
 #include "swift/AST/ASTWalker.h"
 #include "swift/AST/Decl.h"
 #include "swift/AST/ExistentialLayout.h"
+#include "swift/AST/Expr.h"
 #include "swift/AST/GenericParamList.h"
 #include "swift/AST/NameLookup.h"
 #include "swift/AST/Pattern.h"
@@ -122,9 +123,26 @@ UNINTERESTING_FEATURE(MemberImportVisibility)
 // ----------------------------------------------------------------------------
 
 UNINTERESTING_FEATURE(StaticAssert)
-// Receiver selection does not change a declaration's interface type.
-// TODO: Account for receiver syntax in serialized inlinable bodies.
-UNINTERESTING_FEATURE(ClosureReceiverParameters)
+static bool usesFeatureClosureReceiverParameters(Decl *decl) {
+  if (!decl->getAttrs().hasAttribute<InlinableAttr>() &&
+      !decl->getAttrs().hasAttribute<TransparentAttr>() &&
+      !decl->getAttrs().hasAttribute<AlwaysEmitIntoClientAttr>())
+    return false;
+
+  class ReceiverWalker : public ASTWalker {
+  public:
+    bool found = false;
+    PreWalkResult<Expr *> walkToExprPre(Expr *expr) override {
+      if (auto *closure = dyn_cast<ClosureExpr>(expr))
+        found |= closure->getReceiverParameter() != nullptr;
+      if (found)
+        return Action::Stop();
+      return Action::Continue(expr);
+    }
+  } walker;
+  decl->walk(walker);
+  return walker.found;
+}
 UNINTERESTING_FEATURE(NamedOpaqueTypes)
 UNINTERESTING_FEATURE(FlowSensitiveConcurrencyCaptures)
 UNINTERESTING_FEATURE(CodeItemMacros)

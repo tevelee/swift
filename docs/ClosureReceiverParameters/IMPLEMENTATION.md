@@ -11,10 +11,10 @@ Swift and SwiftSyntax use branch `feature/closure-receiver-parameters`, publishe
 | SwiftParser with raw-syntax validation | 2,759 tests, 3 skipped, zero failures; includes 22 receiver tests |
 | CodeGeneration schema and regenerated sources | 16 tests passed; no generated-source diff |
 | Patched Swift compiler and host standard library | Built on arm64 macOS with assertions; Swift 6.5-dev |
-| Receiver compiler fixtures | All eight passed, including Swift 5/6 constraints, parser/AST dump checks, SIL ownership/lifetime diagnostics, and runtime checks |
+| Receiver compiler fixtures | All 13 passed, including Swift 5/6 constraints, parser/AST dump checks, SIL ownership/lifetime diagnostics, lookup, capture provenance, isolation/builders, module round trips, and runtime checks |
 | AST receiver selection and parameter cloning | Both unit tests passed |
 | Existing closure/parser/capture regressions | Eight passed |
-| Receiver and legacy typed-self runtime fixtures with optimization | Both passed |
+| Receiver, lookup/capture, and legacy typed-self runtime fixtures with optimization | All three passed |
 
 The parser/schema runs used Xcode 27.2 beta 3's Apple Swift 6.4.2. Compiler fixtures used the newly built compiler and libraries, with the Xcode 27.2 SDK and linker. The global Xcode selection was unchanged. The earlier [Linux parser CI](https://github.com/tevelee/swift-syntax/actions/runs/41107071219) remains parser evidence; the compiler results above are local macOS evidence.
 
@@ -22,7 +22,9 @@ Verification found and corrected a missing declaration-feature registry entry an
 
 The original build helper incorrectly supplied Xcode as `SWIFT_NATIVE_SWIFT_TOOLS_PATH`, causing missing helper utilities and an older compiler to build the new standard library. Removing that override and clearing its cached value with `-USWIFT_NATIVE_SWIFT_TOOLS_PATH` plus `--reconfigure` restored the native build path. No Xcode files or upstream build-support source changes were required. Runtime tests additionally selected Xcode's linker using `SWIFT_DRIVER_TEST_OPTIONS='-tools-directory <Xcode toolchain bin>'`. Sparse LLVM sources were expanded for configuration dependencies; optional linker, Clang tools, and sanitizer-runtime products were disabled.
 
-The precheck prototype intentionally preserves ordinary nonmember/global lookup, so it does not implement receiver-before-global priority. Local functions remain receiver boundaries. General capture-provenance chains, serialization and inlinable bodies, other AST rewrites, isolation, builders, and lifetime-dependent results need further integration work. Optimized runtime checks do not establish general SIL equivalence. Unescaped typed `self` remains an experimental reinterpretation requiring a compatibility decision.
+The completed POC defers receiver-before-global lookup until the receiver type is available in each solver branch. Local functions inherit receiver lookup. Tests cover capture ancestry (including weak capture, unwrapping, and recapture), actor and Sendable diagnostics, result builders, feature-guarded inlinable/client-emitted bodies, interface reconstruction, and an optimized binary-module client. A runtime weak-reference check confirms that selecting a global fallback does not retain an unused receiver.
+
+This is a tested POC, not production-ready language integration. SourceKit/refactoring, all AST rewrites, lifetime-dependent result APIs, solver performance, and cross-platform/compiler-wide regressions remain outside this validation. Optimized runtime checks do not establish general SIL equivalence. Unescaped typed `self` remains an experimental reinterpretation requiring a compatibility decision.
 
 ## Evidence baseline
 
@@ -174,7 +176,7 @@ Preserve the escaped-token distinction before identifier normalization loses it.
 
 For `users.map { self in displayName }`, the contextual parameter type and the result expression constrain each other. Ordinary unqualified lookup must not permanently bind the name to a global declaration, bind it to an outer instance, or emit an undeclared-name error before receiver inference can run.
 
-An implementation strategy is:
+The POC implements the following strategy:
 
 1. Identify lexical local bindings without importing the enclosing implicit receiver's members. Preserve shadowing by captured locals.
 2. For names without a local binding, retain the selected receiver declaration and any nonreceiver fallback candidates in a deferred lookup representation.
@@ -182,7 +184,7 @@ An implementation strategy is:
 4. Select global fallback only when the receiver has no member with that name. A failed member overload or inaccessible declaration must not change the meaning to a fallback. Receiver-type alternatives in overloaded calls must be explored without committing one alternative's lookup results globally.
 5. Apply the solution to form ordinary bound member expressions with source locations preserved for diagnostics, indexing, and refactorings.
 
-The representation could be a dedicated unresolved receiver reference or an extension of existing precheck/constraint machinery. That choice needs a prototype. In the inspected source, `visitUnresolvedDeclRefExpr` is explicitly an error-recovery path, so simply leaving an undeclared-name expression there would not implement normal receiver inference.
+Precheck produces an `UnresolvedDotExpr` with a receiver-lookup marker and the ordinary global alternatives. Constraint generation deliberately omits the existing outer-alternative disjunction: that disjunction would let a global win merely because a receiver overload fails. `simplifyMemberConstraint` waits for the receiver type and introduces globals only when both viable and unviable member sets are empty. Including inaccessible members prevents an access error from becoming global fallback. Solution application forms an ordinary member or declaration reference, dropping the unused receiver base for globals. No new function type, calling convention, or constraint kind is introduced.
 
 The proposed shadowing policy has a nontrivial cost: receiver membership must be known before global fallback, and that decision cannot depend only on which overload happens to type check. Benchmark overloaded, generic, and nested examples. If this cannot be expressed predictably without excessive solver branching, narrow the lookup policy or reconsider the feature.
 

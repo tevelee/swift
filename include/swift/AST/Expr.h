@@ -226,8 +226,9 @@ protected:
     NumElements : 32
   );
 
-  SWIFT_INLINE_BITFIELD(UnresolvedDotExpr, Expr, 4,
-    FunctionRefInfo : 4
+  SWIFT_INLINE_BITFIELD(UnresolvedDotExpr, Expr, 5,
+    FunctionRefInfo : 4,
+    IsClosureReceiverLookup : 1
   );
 
   SWIFT_INLINE_BITFIELD_FULL(SubscriptExpr, LookupExpr, 2,
@@ -2687,6 +2688,7 @@ public:
       : Expr(ExprKind::UnresolvedDot, Implicit), SubExpr(subexpr),
         DotLoc(dotloc), NameLoc(nameloc), Name(name),
         OuterAlternatives(outerAlternatives) {
+    Bits.UnresolvedDotExpr.IsClosureReceiverLookup = false;
     setFunctionRefInfo(FunctionRefInfo::unapplied(nameloc));
   }
 
@@ -2747,6 +2749,14 @@ public:
 
   ArrayRef<ValueDecl *> getOuterAlternatives() const {
     return OuterAlternatives;
+  }
+
+  /// Receiver lookup admits outer declarations only when no member exists.
+  bool isClosureReceiverLookup() const {
+    return Bits.UnresolvedDotExpr.IsClosureReceiverLookup;
+  }
+  void setIsClosureReceiverLookup() {
+    Bits.UnresolvedDotExpr.IsClosureReceiverLookup = true;
   }
 
   /// Retrieve the kind of function reference.

@@ -3602,8 +3602,9 @@ namespace {
         // The only way to get here is via an UnresolvedDotExpr with outer
         // alternatives.
         auto UDE = cast<UnresolvedDotExpr>(expr);
-        diagnoseDeprecatedConditionalConformanceOuterAccess(
-            UDE, selected.choice.getDecl());
+        if (!UDE->isClosureReceiverLookup())
+          diagnoseDeprecatedConditionalConformanceOuterAccess(
+              UDE, selected.choice.getDecl());
 
         return buildDeclRef(selected, nameLoc, memberLocator, implicit);
       }

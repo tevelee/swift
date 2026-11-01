@@ -1952,6 +1952,43 @@ public:
     return false;
   }
 
+  static bool isClosureReceiverReference(ValueDecl *decl, ParamDecl *receiver) {
+    llvm::SmallPtrSet<ValueDecl *, 8> visited;
+    while (decl && visited.insert(decl).second) {
+      if (decl == receiver)
+        return true;
+      auto *var = dyn_cast<VarDecl>(decl);
+      if (!var)
+        return false;
+      if (var->getParentCaptureList()) {
+        if (!isSimpleSelfCapture(var))
+          return false;
+        decl = getParentInitializerDecl(var);
+        continue;
+      }
+      auto *conditional = parentConditionalStmt(var);
+      if (!conditional)
+        return false;
+      decl = nullptr;
+      for (auto &condition : conditional->getCond()) {
+        auto *pattern = condition.getPatternOrNull();
+        if (auto *optional = dyn_cast_or_null<OptionalSomePattern>(pattern))
+          pattern = optional->getSubPattern();
+        if (!pattern || pattern->getSingleVar() != var ||
+            !condition.rebindsSelf(var->getASTContext(),
+                                   /*requiresCaptureListRef=*/true))
+          continue;
+        auto *initializer = condition.getInitializerOrNull();
+        while (auto *conversion = dyn_cast<ImplicitConversionExpr>(initializer))
+          initializer = conversion->getSubExpr();
+        if (auto *ref =
+                dyn_cast<DeclRefExpr>(initializer->getSemanticsProvidingExpr()))
+          decl = ref->getDecl();
+      }
+    }
+    return false;
+  }
+
   /// Whether or not implicit self is allowed for self decl
   static bool selfDeclAllowsImplicitSelf(Expr *E,
                                          const AbstractClosureExpr *inClosure) {
@@ -1960,6 +1997,21 @@ public:
     }
 
     auto *DRE = cast<DeclRefExpr>(E);
+
+    // A capture named self is a receiver only if its ancestry reaches the
+    // selected invocation parameter. This check also applies to value types
+    // and Swift 5, where the ordinary ARC diagnostics can otherwise permit
+    // implicit self without examining capture provenance.
+    for (const DeclContext *dc = inClosure; dc && dc->isLocalContext();
+         dc = dc->getParent()) {
+      if (auto *closure = dyn_cast<ClosureExpr>(dc)) {
+        if (auto *receiver = closure->getReceiverParameter()) {
+          if (!isClosureReceiverReference(DRE->getDecl(), receiver))
+            return false;
+          break;
+        }
+      }
+    }
 
     // Defensive check for type. If the expression doesn't have type here, it
     // should have been diagnosed somewhere else.
@@ -2383,6 +2435,13 @@ public:
     if (Ctx.isLanguageModeAtLeast(LanguageMode::v6))
       return true;
 
+    for (const DeclContext *dc = E; dc && dc->isLocalContext();
+         dc = dc->getParent()) {
+      if (auto *closure = dyn_cast<ClosureExpr>(dc))
+        if (closure->getReceiverParameter())
+          return true;
+    }
+
     // Only record closures requiring self qualification prior to Swift 6
     // mode.
     return isClosureRequiringSelfQualification(E);
@@ -2590,7 +2649,13 @@ public:
         // self param.
         return;
       }
-      emitFixItsForExplicitClosure(Diags, memberLoc, CE);
+      if (CE->getReceiverParameter()) {
+        // Capturing self here would collide with the invocation parameter.
+        Diags.diagnose(memberLoc, diag::note_reference_self_explicitly)
+            .fixItInsert(memberLoc, "self.");
+      } else {
+        emitFixItsForExplicitClosure(Diags, memberLoc, CE);
+      }
     } else {
       // If this wasn't an explicit closure, just offer the fix-it to
       // reference self explicitly.
