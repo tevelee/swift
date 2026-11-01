@@ -1,5 +1,7 @@
 # Closure receiver parameters: experimental POC
 
+The [pitch](ClosureReceiverParameters/PITCH.md) develops the language design, Kotlin inspiration, alternatives, and ownership model. This page describes the implementation and its validation limits.
+
 This branch explores explicitly binding an ordinary closure argument as `self`:
 
 ```swift
@@ -37,6 +39,10 @@ cloning the parameter list preserves its role; reordering or removing parameters
 must preserve that invariant. An AST dump marker and two AST unit tests cover
 receiver selection and cloning. `super` is diagnosed within receiver scope;
 `Self` keeps its lexical meaning. These compiler changes are unverified.
+A subsequent source review added a diagnostic for ordinary parameters or locals
+named `self` shadowing the receiver. The constraint fixture covers those cases
+in Swift 5 and 6 modes, but has not run. Capture and weak-unwrapping provenance
+still need validation.
 Serialization, other AST rewrites, builders, actor isolation, and optimized SIL
 need further integration work.
 

@@ -5082,6 +5082,9 @@ ERROR(super_in_closure_with_capture,none,
       "not yet supported", ())
 ERROR(super_in_closure_with_receiver,none,
       "'super' cannot be used in the scope of a closure receiver parameter", ())
+ERROR(closure_receiver_shadowed,none,
+      "implicit receiver lookup is unavailable because 'self' is shadowed; "
+      "use an explicit member access", ())
 NOTE(super_in_closure_with_capture_here,none,
      "'self' explicitly captured here", ())
 

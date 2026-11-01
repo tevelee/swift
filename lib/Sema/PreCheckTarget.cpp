@@ -624,8 +624,20 @@ static Expr *resolveDeclRefExpr(UnresolvedDeclRefExpr *UDRE, DeclContext *DC,
           // and weak-self unwrapping, rather than capturing the root parameter
           // behind the programmer's back.
           ValueDecl *base = selfBindings.empty() ? receiver : selfBindings[0];
-          auto *baseExpr = new (Context) DeclRefExpr(
-              base, UDRE->getNameLoc(), /*Implicit=*/true);
+          if (base != receiver) {
+            auto *variable = dyn_cast<VarDecl>(base);
+            // Capture entries and conditional self unwrapping are validated
+            // by the existing self-capture diagnostics. An ordinary local or
+            // parameter named `self` has no receiver provenance at all.
+            if (!variable || (!variable->getParentCaptureList() &&
+                              !isa_and_nonnull<LabeledConditionalStmt>(
+                                  variable->getParentPatternStmt()))) {
+              Context.Diags.diagnose(Loc, diag::closure_receiver_shadowed);
+              return new (Context) ErrorExpr(Loc);
+            }
+          }
+          auto *baseExpr = new (Context)
+              DeclRefExpr(base, UDRE->getNameLoc(), /*Implicit=*/true);
           return new (Context) UnresolvedDotExpr(
               baseExpr, SourceLoc(), Name, UDRE->getNameLoc(),
               UDRE->isImplicit());

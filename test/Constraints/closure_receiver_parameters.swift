@@ -1,4 +1,5 @@
 // RUN: %target-typecheck-verify-swift -swift-version 6 -enable-experimental-feature ClosureReceiverParameters
+// RUN: %target-typecheck-verify-swift -swift-version 5 -enable-experimental-feature ClosureReceiverParameters
 // REQUIRES: swift_feature_ClosureReceiverParameters
 
 func with<Value, Result>(_ value: Value, _ body: (Value) -> Result) -> Result {
@@ -29,6 +30,21 @@ func localShadowing() {
   let value = 99
   let result: Int = with(Item(value: 1)) { self in value + self.value }
   _ = result
+}
+
+func receiverNameShadowing() {
+  with(Item(value: 1)) { self in
+    with(Item(value: 2)) { `self` in
+      _ = self.value // An ordinary explicit access is still valid.
+      _ = doubled() // expected-error {{implicit receiver lookup is unavailable because 'self' is shadowed}}
+    }
+    do {
+      let `self` = Item(value: 3)
+      _ = self.value
+      _ = doubled() // expected-error {{implicit receiver lookup is unavailable because 'self' is shadowed}}
+    }
+    _ = doubled() // The selected receiver remains available outside the shadow.
+  }
 }
 
 func mutateReceiver() {
