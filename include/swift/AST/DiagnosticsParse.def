@@ -2283,5 +2283,14 @@ ERROR(file_default_invalid_specifier,PointsToFirstBadToken,
 ERROR(file_default_rejects_attributes,PointsToFirstBadToken,
       "attribute cannot be attached to a file-level default", ())
 
+ERROR(pack_binding_local_let_only,none,
+      "pack destructuring currently requires a local 'let' binding", ())
+ERROR(pack_binding_simple_pattern,none,
+      "'each' in a tuple pattern must bind a name or '_'", ())
+ERROR(pack_binding_multiple,none,
+      "a tuple pattern can contain only one 'each' binding", ())
+ERROR(pack_binding_requires_fixed_element,none,
+      "pack destructuring currently requires a fixed tuple element", ())
+
 #define UNDEFINE_DIAGNOSTIC_MACROS
 #include "DefineDiagnosticMacros.h"

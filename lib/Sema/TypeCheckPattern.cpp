@@ -1335,6 +1335,18 @@ Pattern *TypeChecker::coercePatternToType(
   case PatternKind::Tuple: {
     TuplePattern *TP = cast<TuplePattern>(P);
     bool hadError = type->hasError();
+
+    if (auto *binding = pattern.getPatternBindingDecl()) {
+      if (!binding->getInit(pattern.getPatternBindingIndex())) {
+        for (auto &elt : TP->getElements()) {
+          if (elt.isPackBinding()) {
+            diags.diagnose(elt.getEachLoc(),
+                           diag::refutable_pattern_requires_initializer);
+            return nullptr;
+          }
+        }
+      }
+    }
     
     // Sometimes a paren is just a paren. If the tuple pattern has a single
     // element, we can reduce it to a paren pattern.
@@ -1389,6 +1401,17 @@ Pattern *TypeChecker::coercePatternToType(
         CoercionType = ErrorType::get(Context);
       else
         CoercionType = tupleTy->getElement(i).getType();
+
+      if (!hadError && elt.isPackBinding()) {
+        if (!CoercionType->is<PackExpansionType>()) {
+          diags.diagnose(elt.getEachLoc(),
+                         diag::pack_binding_requires_expansion);
+          hadError = true;
+          CoercionType = ErrorType::get(Context);
+        } else {
+          CoercionType = TupleType::get({TupleTypeElt(CoercionType)}, Context);
+        }
+      }
       
       // If the tuple pattern had a label for the tuple element, it must match
       // the label for the tuple type being matched.

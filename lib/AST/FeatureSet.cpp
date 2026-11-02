@@ -123,6 +123,28 @@ UNINTERESTING_FEATURE(MemberImportVisibility)
 // ----------------------------------------------------------------------------
 
 UNINTERESTING_FEATURE(StaticAssert)
+static bool usesFeaturePackDestructuring(Decl *decl) {
+  if (!decl->getAttrs().hasAttribute<InlinableAttr>() &&
+      !decl->getAttrs().hasAttribute<TransparentAttr>() &&
+      !decl->getAttrs().hasAttribute<AlwaysEmitIntoClientAttr>())
+    return false;
+
+  class PackBindingWalker : public ASTWalker {
+  public:
+    bool found = false;
+    PreWalkResult<Pattern *> walkToPatternPre(Pattern *pattern) override {
+      if (auto *tuple = dyn_cast<TuplePattern>(pattern)) {
+        for (auto &elt : tuple->getElements())
+          found |= elt.isPackBinding();
+      }
+      if (found)
+        return Action::Stop();
+      return Action::Continue(pattern);
+    }
+  } walker;
+  decl->walk(walker);
+  return walker.found;
+}
 static bool usesFeatureClosureReceiverParameters(Decl *decl) {
   if (!decl->getAttrs().hasAttribute<InlinableAttr>() &&
       !decl->getAttrs().hasAttribute<TransparentAttr>() &&

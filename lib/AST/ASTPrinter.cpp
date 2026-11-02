@@ -1775,6 +1775,8 @@ void PrintAST::printPattern(const Pattern *pattern) {
       if (i != 0)
         Printer << ", ";
 
+      if (Elt.isPackBinding())
+        Printer << "each ";
       printPattern(Elt.getPattern());
     }
     Printer << ")";

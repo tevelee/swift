@@ -328,6 +328,7 @@ public:
 class TuplePatternElt {
   Identifier Label;
   SourceLoc LabelLoc;
+  SourceLoc EachLoc;
   Pattern *ThePattern;
 
 public:
@@ -339,6 +340,11 @@ public:
 
   Identifier getLabel() const { return Label; }
   SourceLoc getLabelLoc() const { return LabelLoc; }
+
+  /// Binds an existing tuple expansion component as an abstract tuple value.
+  bool isPackBinding() const { return EachLoc.isValid(); }
+  SourceLoc getEachLoc() const { return EachLoc; }
+  void setEachLoc(SourceLoc loc) { EachLoc = loc; }
 
   Pattern *getPattern() { return ThePattern; }
   const Pattern *getPattern() const {

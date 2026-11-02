@@ -1227,6 +1227,15 @@ Parser::parsePatternTupleElement() {
     consumeToken(tok::colon);
   }
 
+  SourceLoc eachLoc;
+  if (Context.LangOpts.hasFeature(Feature::PackDestructuring) &&
+      Tok.isContextualKeyword("each") &&
+      peekToken().isIdentifierOrUnderscore()) {
+    eachLoc = consumeToken();
+    if (!CurDeclContext->isLocalContext() || !InBindingPattern.isLet())
+      diagnose(eachLoc, diag::pack_binding_local_let_only);
+  }
+
   // Parse the pattern.
   ParserResult<Pattern>  pattern = parsePattern();
   if (pattern.hasCodeCompletion())
@@ -1235,6 +1244,11 @@ Parser::parsePatternTupleElement() {
     return std::make_pair(makeParserError(), std::nullopt);
 
   auto Elt = TuplePatternElt(Label, LabelLoc, pattern.get());
+  if (eachLoc.isValid()) {
+    Elt.setEachLoc(eachLoc);
+    if (!isa<NamedPattern>(pattern.get()) && !isa<AnyPattern>(pattern.get()))
+      diagnose(eachLoc, diag::pack_binding_simple_pattern);
+  }
   return std::make_pair(makeParserSuccess(), Elt);
 }
 
@@ -1268,6 +1282,18 @@ ParserResult<Pattern> Parser::parsePatternTuple() {
         elts.push_back(*elt);
         return makeParserSuccess();
       });
+
+  bool sawPackBinding = false;
+  for (auto &elt : elts) {
+    if (!elt.isPackBinding())
+      continue;
+    if (sawPackBinding)
+      diagnose(elt.getEachLoc(), diag::pack_binding_multiple);
+    sawPackBinding = true;
+  }
+  if (sawPackBinding && elts.size() == 1)
+    diagnose(elts.front().getEachLoc(),
+             diag::pack_binding_requires_fixed_element);
 
   return makeParserResult(
            ListStatus,

@@ -2370,6 +2370,26 @@ namespace {
               locator.withPathElement(LocatorPathElt::PatternMatch(eltPattern)),
               bindPatternVarsOneWay);
 
+          if (tupleElt.isPackBinding()) {
+            auto eltLoc = locator.withPathElement(
+                LocatorPathElt::PatternMatch(eltPattern));
+            auto patternTy = CS.createTypeVariable(
+                CS.getConstraintLocator(eltLoc),
+                TVO_CanBindToPack | TVO_CanBindToNoEscape);
+            auto shapeTy = CS.createTypeVariable(
+                CS.getConstraintLocator(eltLoc.withPathElement(
+                    ConstraintLocator::PackShape)),
+                TVO_CanBindToPack);
+            CS.addConstraint(ConstraintKind::ShapeOf, shapeTy, patternTy,
+                             eltLoc.withPathElement(
+                                 ConstraintLocator::PackShape));
+            auto expansion = PackExpansionType::get(patternTy, shapeTy);
+            auto tupleTy = TupleType::get({TupleTypeElt(expansion)},
+                                          CS.getASTContext());
+            CS.addConstraint(ConstraintKind::Equal, eltTy, tupleTy, eltLoc);
+            eltTy = expansion;
+          }
+
           tupleTypeElts.push_back(TupleTypeElt(eltTy, tupleElt.getLabel()));
         }
 

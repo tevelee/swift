@@ -9932,5 +9932,8 @@ GROUPED_WARNING(oslog_missing_string_section,OSLog,none,
 GROUPED_ERROR(oslog_string_section_not_literal,OSLog,none,
               "global variable 'osLogStringSectionName' requires a string literal initializer", ())
 
+ERROR(pack_binding_requires_expansion,none,
+      "'each' binding must correspond to an existing tuple pack expansion", ())
+
 #define UNDEFINE_DIAGNOSTIC_MACROS
 #include "DefineDiagnosticMacros.h"

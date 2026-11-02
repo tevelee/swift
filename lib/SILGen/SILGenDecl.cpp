@@ -1805,6 +1805,50 @@ public:
 
 namespace {
 
+/// Materialize an expansion component into a local abstract tuple binding.
+/// The source's existing dynamic pack loop initializes a separate tuple buffer,
+/// so the binding never relies on the layout of a flat tuple matching a nested
+/// tuple's layout.
+class PackBindingInitialization final : public Initialization {
+  SILLocation Loc;
+  InitializationPtr Binding;
+  TemporaryInitializationPtr Temporary;
+  SmallVector<InitializationPtr, 1> Elements;
+
+public:
+  PackBindingInitialization(SILGenFunction &SGF, Pattern *pattern,
+                            InitializationPtr binding)
+      : Loc(pattern), Binding(std::move(binding)) {
+    auto formalType = pattern->getType()->getCanonicalType();
+    Temporary = SGF.emitTemporary(Loc, SGF.getTypeLowering(formalType));
+    (void)Temporary->splitIntoTupleElements(SGF, Loc, formalType, Elements);
+    assert(Elements.size() == 1);
+    assert(Elements.front()->canPerformPackExpansionInitialization());
+  }
+
+  bool canPerformPackExpansionInitialization() const override { return true; }
+
+  void performPackExpansionInitialization(
+      SILGenFunction &SGF, SILLocation loc, SILValue indexWithinComponent,
+      llvm::function_ref<void(Initialization *)> fn) override {
+    Elements.front()->performPackExpansionInitialization(
+        SGF, loc, indexWithinComponent, fn);
+  }
+
+  void copyOrInitValueInto(SILGenFunction &, SILLocation, ManagedValue,
+                           bool) override {
+    llvm_unreachable("pack bindings must be initialized by an expansion");
+  }
+
+  void finishInitialization(SILGenFunction &SGF) override {
+    Elements.front()->finishInitialization(SGF);
+    Temporary->finishInitialization(SGF);
+    Binding->copyOrInitValueInto(SGF, Loc, Temporary->getManagedAddress(),
+                                 /*isInit=*/true);
+    Binding->finishInitialization(SGF);
+  }
+};
+
 /// InitializationForPattern - A visitor for traversing a pattern, generating
 /// SIL code to allocate the declared variables, and generating an
 /// Initialization representing the needed initializations.
@@ -1871,8 +1915,13 @@ struct InitializationForPattern
   InitializationPtr visitTuplePattern(TuplePattern *P) {
     TupleInitialization *init = new TupleInitialization(
       cast<TupleType>(P->getType()->getCanonicalType()));
-    for (auto &elt : P->getElements())
-      init->SubInitializations.push_back(visit(elt.getPattern()));
+    for (auto &elt : P->getElements()) {
+      auto subInit = visit(elt.getPattern());
+      if (elt.isPackBinding())
+        subInit = InitializationPtr(new PackBindingInitialization(
+            SGF, elt.getPattern(), std::move(subInit)));
+      init->SubInitializations.push_back(std::move(subInit));
+    }
     return InitializationPtr(init);
   }
 
